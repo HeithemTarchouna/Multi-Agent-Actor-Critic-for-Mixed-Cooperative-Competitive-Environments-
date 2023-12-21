@@ -1,54 +1,40 @@
 import numpy as np
 
-
 class MultiAgentReplayBuffer:
-    def __init__(self, max_size, critic_dims, actor_dims,
-                 n_actions, n_agents, batch_size):
+    def __init__(self, max_size, critic_dims, actor_dims, n_actions, n_agents, batch_size):
         self.mem_size = max_size
         self.mem_cntr = 0
         self.n_agents = n_agents
-        self.actor_dims = actor_dims
         self.batch_size = batch_size
-        self.n_actions = n_actions
 
         self.state_memory = np.zeros((self.mem_size, critic_dims))
         self.new_state_memory = np.zeros((self.mem_size, critic_dims))
+
         self.reward_memory = np.zeros((self.mem_size, n_agents))
-        self.terminal_memory = np.zeros((self.mem_size, n_agents), dtype=bool)
+        self.terminal_memory = np.zeros((self.mem_size, n_agents), dtype=np.float32)
 
-        self.init_actor_memory()
+        self.actor_state_memory = [np.zeros((self.mem_size, actor_dim)) for actor_dim in actor_dims]
+        self.actor_new_state_memory = [np.zeros((self.mem_size, actor_dim)) for actor_dim in actor_dims]
+        self.actor_action_memory = [np.zeros((self.mem_size, action_dim)) for action_dim in n_actions]
 
-    def init_actor_memory(self):
-        self.actor_state_memory = []
-        self.actor_new_state_memory = []
-        self.actor_action_memory = []
-
-        for i in range(self.n_agents):
-            self.actor_state_memory.append(
-                    np.zeros((self.mem_size, self.actor_dims[i])))
-            self.actor_new_state_memory.append(
-                    np.zeros((self.mem_size, self.actor_dims[i])))
-            self.actor_action_memory.append(
-                    np.zeros((self.mem_size, self.n_actions[i])))
-
-    def store_transition(self, raw_obs, state, action, reward,
-                         raw_obs_, state_, done):
-
+    def store_transition(self, raw_obs, state, action, reward, raw_obs_, state_, done):
         index = self.mem_cntr % self.mem_size
-        for agent_idx in range(self.n_agents):
-            self.actor_state_memory[agent_idx][index] = raw_obs[agent_idx]
-            self.actor_new_state_memory[agent_idx][index] = raw_obs_[agent_idx]
-            self.actor_action_memory[agent_idx][index] = action[agent_idx]
-
+        if state.shape != self.state_memory[index].shape:
+            state = np.reshape(state, self.state_memory[index].shape)
         self.state_memory[index] = state
         self.new_state_memory[index] = state_
         self.reward_memory[index] = reward
         self.terminal_memory[index] = done
+
+        for agent_idx, (agent_raw_obs, agent_raw_obs_, agent_action) in enumerate(zip(raw_obs, raw_obs_, action)):
+            self.actor_state_memory[agent_idx][index] = agent_raw_obs
+            self.actor_new_state_memory[agent_idx][index] = agent_raw_obs_
+            self.actor_action_memory[agent_idx][index] = agent_action
+
         self.mem_cntr += 1
 
     def sample_buffer(self):
         max_mem = min(self.mem_cntr, self.mem_size)
-
         batch = np.random.choice(max_mem, self.batch_size, replace=False)
 
         states = self.state_memory[batch]
@@ -56,19 +42,11 @@ class MultiAgentReplayBuffer:
         rewards = self.reward_memory[batch]
         terminal = self.terminal_memory[batch]
 
-        actor_states = []
-        actor_new_states = []
-        actions = []
-        for agent_idx in range(self.n_agents):
-            actor_states.append(self.actor_state_memory[agent_idx][batch])
-            actor_new_states.append(
-                self.actor_new_state_memory[agent_idx][batch])
-            actions.append(self.actor_action_memory[agent_idx][batch])
+        actor_states = [self.actor_state_memory[agent_idx][batch] for agent_idx in range(self.n_agents)]
+        actor_new_states = [self.actor_new_state_memory[agent_idx][batch] for agent_idx in range(self.n_agents)]
+        actions = [self.actor_action_memory[agent_idx][batch] for agent_idx in range(self.n_agents)]
 
-        return actor_states, states, actions, rewards, \
-            actor_new_states, states_, terminal
+        return actor_states, states, actions, rewards, actor_new_states, states_, terminal
 
     def ready(self):
-        if self.mem_cntr >= self.batch_size:
-            return True
-        return False
+        return self.mem_cntr >= self.batch_size
