@@ -4,9 +4,8 @@ import torch.nn.functional as F
 from networks import ActorNetwork, CriticNetwork
 
 
-class Agent:
-    def __init__(self, actor_dims, critic_dims, n_actions,
-                 n_agents, agent_idx,agent_name,chkpt_dir, min_action,
+class SubPolicy:
+    def __init__(self, actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
                  max_action, alpha=1e-4, beta=1e-3, fc1=64,
                  fc2=64, gamma=0.95, tau=0.01):
         self.gamma = gamma # discount factor (how much we care about future rewards)
@@ -112,7 +111,7 @@ class Agent:
         #-----------------------------------------------------------------------------------------
         with T.no_grad():
             # Get the actions of all agents in the next state as predicted by the target actor network
-            new_actions = T.cat([agent.target_actor(actor_new_states[idx])
+            new_actions = T.cat([agent.get_current_subpolicy().target_actor(actor_new_states[idx])
                                  for idx, agent in enumerate(agent_list)],
                                 dim=1)
             
@@ -165,3 +164,70 @@ class Agent:
     
         self.update_network_parameters()
     #-----------------------------------------------------------------------------------------
+
+
+
+class Agent:
+    def __init__(self, actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
+                 max_action, alpha=1e-4, beta=1e-3, fc1=64,
+                 fc2=64, gamma=0.95, tau=0.01, num_subpolicies=3):
+        self.agent_name = agent_name
+        self.agent_idx = agent_idx
+        self.n_actions = n_actions
+        self.min_action = min_action
+        self.max_action = max_action
+
+        # subpolicies co
+        self.num_subpolicies = num_subpolicies
+        self.subPolicies = self.init_subpolicies(actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
+                 max_action, alpha=alpha, beta=beta, fc1=fc1,
+                 fc2=fc2, gamma=gamma, tau=tau, num_subpolicies=num_subpolicies)
+        # randomly select a subpolicy from the subpolicy list (uniform distributin)
+        self.current_subpolicy_idx = np.random.randint(0,num_subpolicies)
+
+
+    def get_current_subpolicy(self):
+        return self.subPolicies[self.current_subpolicy_idx]
+
+
+    def init_subpolicies(self,actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
+                 max_action, alpha=1e-4, beta=1e-3, fc1=64,
+                 fc2=64, gamma=0.95, tau=0.01, num_subpolicies=3):
+        subpolicies = []
+        for _ in range(num_subpolicies):
+            subpolicies.append(SubPolicy(actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
+                 max_action, alpha,beta, fc1,
+                 fc2, gamma, tau))
+        return subpolicies
+    
+
+    def random_select_subpolicy(self):
+        # randomly select a subpolicy from the subpolicy list (uniform distributin)
+        self.current_subpolicy_idx = np.random.randint(0,self.num_subpolicies)
+    
+        
+    
+    def choose_action(self, observation, evaluate=False,new_episode=False):
+        # if it's a new episode, we randomly select a subpolicy from the subpolicy list (uniform distributin)
+        if new_episode :
+            self.random_select_subpolicy()
+            #print(f"agent {self.agent_name} : now using subpolicy {self.current_subpolicy_idx}")
+            
+
+
+
+        return self.subPolicies[self.current_subpolicy_idx].choose_action(observation, evaluate)
+    
+    def learn(self, memory, agent_list):
+        self.subPolicies[self.current_subpolicy_idx].learn(memory[self.agent_name][self.current_subpolicy_idx], agent_list)
+        #self.get_current_subpolicy().learn(memory, agent_list)
+
+    def save_models(self):
+        self.get_current_subpolicy().save_models()
+    
+    def load_models(self):
+        self.get_current_subpolicy().current_subPolicy.load_models()
+    
+    def update_network_parameters(self, tau=None):
+       self.get_current_subpolicy().update_network_parameters(tau)
+    
