@@ -2,14 +2,20 @@ import numpy as np
 from maddpg import MADDPG
 from buffer import MultiAgentReplayBuffer
 from pettingzoo.mpe import simple_speaker_listener_v4
+# save the agents object as a pickle file
+import pickle
+import os.path
 
 
 def obs_list_to_state_vector(observation):
     state = np.array([])
     for obs in observation:
+        # accumulates the observations of all agents into a single state vector for the critic (global state)
         state = np.concatenate([state, obs])
     return state
 
+# we have 2 agents in this environment
+#
 
 def run():
     parallel_env = simple_speaker_listener_v4.parallel_env(
@@ -19,37 +25,57 @@ def run():
 
     actor_dims = []
     n_actions = []
+    i = 0
     for agent in parallel_env.agents:
+        i += 1
         actor_dims.append(parallel_env.observation_space(agent).shape[0])
+        print(f"agent {i}: action_space {parallel_env.action_space(agent).shape[0]}")
         n_actions.append(parallel_env.action_space(agent).shape[0])
+        print(f"observation_space {parallel_env.observation_space(agent).shape[0]}")
+    
+
+
     critic_dims = sum(actor_dims) + sum(n_actions)
 
+
     maddpg_agents = MADDPG(actor_dims, critic_dims, n_agents, n_actions,
-                           env=parallel_env, gamma=0.95, alpha=1e-4, beta=1e-3)
+                        env=parallel_env, gamma=0.95, alpha=1e-4, beta=1e-3)
+    
     critic_dims = sum(actor_dims)
+    print(f"critic_dims {critic_dims}")
+    print(f"actor_dims {actor_dims}")
     memory = MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
                                     n_actions, n_agents, batch_size=1024)
 
     EVAL_INTERVAL = 1000
-    MAX_STEPS = 10_00000
+    MAX_STEPS = 625_000
 
     total_steps = 0
     episode = 0
     eval_scores = []
     eval_steps = []
+    print(f" total steps :{total_steps}")
 
+    # evaluate the agents once before training starts to get a baseline
     score = evaluate(maddpg_agents, parallel_env, episode, total_steps)
     eval_scores.append(score)
     eval_steps.append(total_steps)
 
+    # now train the agents for a specified number of episodes
     while total_steps < MAX_STEPS:
-        obs, _ = parallel_env.reset()
+        # reset the environment and get the initial state
+        obs, _ = parallel_env.reset() # returns a dictionary of observations for each agent
         terminal = [False] * n_agents
+        
+        # keep looping until the episode is finished
         while not any(terminal):
-            actions = maddpg_agents.choose_action(obs)
+
+            # select actions based on the current state of the environment , returns a list of actions for each agent
+            actions,actions_dict = maddpg_agents.choose_action(obs)
 
             obs_, reward, done, trunc, info = parallel_env.step(actions)
 
+            # store the transition in the replay buffer (experience replay)
             list_done = list(done.values())
             list_obs = list(obs.values())
             list_reward = list(reward.values())
@@ -57,10 +83,15 @@ def run():
             list_obs_ = list(obs_.values())
             list_trunc = list(trunc.values())
 
+            # global state is the observations of all agents
             state = obs_list_to_state_vector(list_obs)
+            # global new state is the observations of all agents after each agent's step
             state_ = obs_list_to_state_vector(list_obs_)
 
+            # terminal is true if any agent is done or truncated (either reached the goal or max steps)
             terminal = [d or t for d, t in zip(list_done, list_trunc)]
+
+            # store the transition in the replay buffer
             memory.store_transition(list_obs, state, list_actions, list_reward,
                                     list_obs_, state_, terminal)
 
@@ -75,7 +106,8 @@ def run():
             eval_steps.append(total_steps)
 
         episode += 1
-
+        print(f"episode {episode} total steps {total_steps}")
+#c
     np.save('data/maddpg_scores.npy', np.array(eval_scores))
     np.save('data/maddpg_steps.npy', np.array(eval_steps))
     return maddpg_agents, parallel_env
@@ -84,12 +116,13 @@ def run():
 
 def evaluate(agents, env, ep, step, n_eval=3):
     score_history = []
+    print(n_eval)
     for i in range(n_eval):
         obs, _ = env.reset()
         score = 0
         terminal = [False] * env.max_num_agents
         while not any(terminal):
-            actions = agents.choose_action(obs, evaluate=True)
+            actions,_ = agents.choose_action(obs, evaluate=True)
             obs_, reward, done, trunc, info = env.step(actions)
 
             list_trunc = list(trunc.values())
@@ -103,7 +136,7 @@ def evaluate(agents, env, ep, step, n_eval=3):
         score_history.append(score)
     avg_score = np.mean(score_history)
     print(f'Evaluation episode {ep} train steps {step}'
-          f' average score {avg_score:.1f}')
+        f' average score {avg_score:.1f}')
     return avg_score
 
 
@@ -128,31 +161,30 @@ def visualize_agents(agents, env, n_episodes=20):
             display.clear_output(wait=True)
             display.display(plt.gcf())
             plt.pause(0.001)  # Adjust as needed for frame rate
+        print(any(terminal))
+
 
         print(f'Episode {episode + 1} completed')
         plt.close()
 
 if __name__ == '__main__':
-    # save the agents object as a pickle file
-    import pickle
-    import os.path
+    run()
+    # if os.path.isfile('trained_agents.pkl'):
+    #     print('File exists')
+    #     with open('trained_agents.pkl', 'rb') as f:
+    #         agents = pickle.load(f)
+    #         parallel_env = simple_speaker_listener_v4.parallel_env(
+    #         continuous_actions=True,render_mode='rgb_array')
+    #         visualize_agents(agents, parallel_env)
 
-    if os.path.isfile('trained_agents.pkl'):
-        print('File exists')
-        with open('trained_agents.pkl', 'rb') as f:
-            agents = pickle.load(f)
-            parallel_env = simple_speaker_listener_v4.parallel_env(
-            continuous_actions=True,render_mode='rgb_array')
-            visualize_agents(agents, parallel_env)
-
-    else:
-        print('File does not exist')
-        # track how much time it took to train the agents
-        import time
-        start = time.time()
-        agents, env = trained_agents, environment = run()
-        end = time.time()
-        print(f'Training took {end - start:.2f} seconds')
-        with open('trained_agents.pkl', 'wb') as f:
-            pickle.dump(agents, f)
-     
+    # else:
+    #     print('File does not exist')
+    #     # track how much time it took to train the agents
+    #     import time
+    #     start = time.time()
+    #     agents, env = trained_agents, environment = run()
+    #     end = time.time()
+    #     print(f'Training took {end - start:.2f} seconds')
+    #     with open('trained_agents.pkl', 'wb') as f:
+    #         pickle.dump(agents, f)
+    
