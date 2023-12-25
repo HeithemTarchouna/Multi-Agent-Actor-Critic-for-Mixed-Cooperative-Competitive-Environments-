@@ -7,7 +7,7 @@ from networks import ActorNetwork, CriticNetwork
 class SubPolicy:
     def __init__(self, actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
                  max_action, alpha=1e-4, beta=1e-3, fc1=64,
-                 fc2=64, gamma=0.95, tau=0.01):
+                 fc2=64, gamma=0.95, tau=0.01,subPolicyIdx=0):
         self.gamma = gamma # discount factor (how much we care about future rewards)
         self.tau = tau # soft update parameter for the target network update , if 1 then the target network is the same as the main network (hard update)
         self.n_actions = n_actions
@@ -15,6 +15,7 @@ class SubPolicy:
         self.agent_idx = agent_idx
         self.min_action = min_action # the minimum action value for each agent (in this case it's -1)
         self.max_action = max_action # the maximum action value for each agent (in this case it's 1)
+        self.subPolicyIdx =  subPolicyIdx
 
         self.actor = ActorNetwork(alpha, actor_dims, fc1, fc2, n_actions,
                                   chkpt_dir=chkpt_dir,
@@ -75,11 +76,11 @@ class SubPolicy:
 
     def learn(self, memory, agent_list):
         # If we don't have enough samples in the replay buffer, we don't learn
-        if not memory.ready():
+        if not memory[self.subPolicyIdx].ready():
             return
 
       # Extract experiences from the buffer
-        sample = memory.sample_buffer()
+        sample = memory[self.subPolicyIdx].sample_buffer()
         actor_states, states, actions, rewards, actor_new_states, states_, dones = \
             sample['actor_states'], sample['states'], sample['actions'], sample['rewards'], \
             sample['actor_new_states'], sample['new_states'], sample['terminals']
@@ -194,10 +195,10 @@ class Agent:
                  max_action, alpha=1e-4, beta=1e-3, fc1=64,
                  fc2=64, gamma=0.95, tau=0.01, num_subpolicies=3):
         subpolicies = []
-        for _ in range(num_subpolicies):
+        for subPolicyIdx in range(num_subpolicies):
             subpolicies.append(SubPolicy(actor_dims, critic_dims, n_actions,agent_idx,agent_name,chkpt_dir, min_action,
                  max_action, alpha,beta, fc1,
-                 fc2, gamma, tau))
+                 fc2, gamma, tau,subPolicyIdx))
         return subpolicies
     
 
@@ -219,8 +220,8 @@ class Agent:
         return self.subPolicies[self.current_subpolicy_idx].choose_action(observation, evaluate)
     
     def learn(self, memory, agent_list):
-        self.subPolicies[self.current_subpolicy_idx].learn(memory[self.agent_name][self.current_subpolicy_idx], agent_list)
-        #self.get_current_subpolicy().learn(memory, agent_list)
+        #self.subPolicies[self.current_subpolicy_idx].learn(memory[self.agent_name][self.current_subpolicy_idx], agent_list)
+        self.get_current_subpolicy().learn(memory, agent_list)
 
     def save_models(self):
         self.get_current_subpolicy().save_models()

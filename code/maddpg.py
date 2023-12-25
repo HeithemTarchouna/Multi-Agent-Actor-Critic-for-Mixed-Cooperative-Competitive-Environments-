@@ -1,4 +1,5 @@
 from agent import Agent
+from buffer import MultiAgentReplayBuffer
 
 
 class MADDPG:
@@ -18,6 +19,8 @@ class MADDPG:
                                gamma=gamma, min_action=min_action,
                                max_action=max_action,num_subpolicies=num_subpolicies))
             self.prev_episode = 0
+        # self.memory =  [MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
+        #                             n_actions, n_agents, batch_size=1024) for _ in range(num_subpolicies)]
 
 
     def choose_action(self, raw_obs, evaluate=False,episode=0):
@@ -41,4 +44,11 @@ class MADDPG:
 
     def learn(self, memory):
         for agent in self.agents:
-            agent.learn(memory, self.agents)    
+            agent.learn(memory, self.agents)
+    
+    def store_transition(self, raw_obs, state, action, reward, raw_obs_, state_, done):
+        for agent_idx, agent in enumerate(self.agents):
+            current_subpolicy = agent.current_subpolicy_idx
+            pass
+            #agent.store_transition(raw_obs[agent_idx], state[agent_idx], action[agent_idx], reward[agent_idx], raw_obs_[agent_idx], state_[agent_idx], done[agent_idx])
+            #self.memory[current_subpolicy].store_transition(raw_obs[agent_idx], state[agent_idx], action[agent_idx], reward[agent_idx], raw_obs_[agent_idx], state_[agent_idx], done[agent_idx])

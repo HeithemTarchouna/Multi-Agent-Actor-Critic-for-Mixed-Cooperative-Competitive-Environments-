@@ -5,6 +5,8 @@ from pettingzoo.mpe import simple_speaker_listener_v4
 # save the agents object as a pickle file
 import pickle
 import os.path
+import matplotlib.pyplot as plt
+from IPython import display
 
 
 def obs_list_to_state_vector(observation):
@@ -46,16 +48,9 @@ def run():
     agents_names = [agent.agent_name for agent in maddpg_agents.agents]
 
 
-    memory = {
-        f"{agents_names[0]}":[MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
-                                    n_actions, n_agents, batch_size=1024) for _ in range(num_subpolicies)],
-        f"{agents_names[1]}":[MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
-                                    n_actions, n_agents, batch_size=1024) for _ in range(num_subpolicies)]                        
-        }
-
-    # memory = MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
-    #                                 n_actions, n_agents, batch_size=1024)
-
+    
+    memory = [MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
+                                    n_actions, n_agents, batch_size=1024) for _ in range(num_subpolicies)]
     EVAL_INTERVAL = 1000
     MAX_STEPS = 625_000 # (25_000 episodes)
 
@@ -100,15 +95,19 @@ def run():
             # terminal is true if any agent is done or truncated (either reached the goal or max steps)
             terminal = [d or t for d, t in zip(list_done, list_trunc)]
 
-            # store the transition in the replay buffer
-            memory[f"{agents_names[0]}"][maddpg_agents.agents[0].current_subpolicy_idx].store_transition(list_obs, state, list_actions, list_reward,
-                                    list_obs_, state_, terminal)
-            memory[f"{agents_names[1]}"][maddpg_agents.agents[1].current_subpolicy_idx].store_transition(list_obs, state, list_actions, list_reward,
-                                    list_obs_, state_, terminal)
 
-            # memory.store_transition(list_obs, state, list_actions, list_reward,
-            #                         list_obs_, state_, terminal)
+        # can be moved to the MADDPG class
+        #--------------------------------------------------------
+            selected_buffers = []
 
+            for _, agent in enumerate(maddpg_agents.agents):
+                current_subpolicy = agent.current_subpolicy_idx
+                if current_subpolicy not in selected_buffers:
+                    selected_buffers.append(current_subpolicy)
+                    memory[current_subpolicy].store_transition(list_obs, state, list_actions, list_reward,
+                                            list_obs_, state_, terminal)
+        #--------------------------------------------------------
+                       
             if total_steps % 100 == 0:
                 maddpg_agents.learn(memory)
             obs = obs_
@@ -156,35 +155,60 @@ def evaluate(agents, env, ep, step, n_eval=3):
 
 
 
+import matplotlib.pyplot as plt
+from IPython import display
+import numpy as np
 
-def visualize_agents(agents, env, n_episodes=20):
-    import matplotlib.pyplot as plt
-    from IPython import display
+def visualize_agents(agents, env, n_episodes=20,speed=0.1):
+    #make sure speed is between 0 and 1 otherwise clip it
+    speed = np.clip(speed,0,1)
 
+
+    # Create a figure outside the loop
+    plt.figure()
     for episode in range(n_episodes):
+        prev_reward = -np.inf
         obs, _ = env.reset()
         terminal = [False] * env.max_num_agents
+
         while not any(terminal):
-            actions,_ = agents.choose_action(obs, evaluate=False,episode=episode)
+            actions, _ = agents.choose_action(obs, evaluate=True, episode=episode)
             obs, rewards, done, trunc, _ = env.step(actions)
+            
             # sum rewards
             rewards = sum(rewards.values())
-            print(rewards)
+
+            # Determine direction
+            direction = "Right direction" if rewards > prev_reward else "Wrong direction"
+            prev_reward = rewards
+            
+            # Render as an RGB array
+            img = env.render()
+
+            # Clear the current axes and plot the new image
+            plt.clf()
+            plt.imshow(img)
+
+            # Determine the center position for the text
+            center_x = img.shape[0] / 2
+
+            # Add direction text to the figure, centered horizontally
+            plt.text(center_x, -18, direction, fontsize=12, color='white', bbox=dict(facecolor='black', alpha=1), ha='center')
+
+            # Display the updated figure
+            display.clear_output(wait=True)
+            display.display(plt.gcf())
+            plt.pause(0.1/speed)
 
             terminal = [d or t for d, t in zip(done.values(), trunc.values())]
 
-            # Render as an RGB array and display
-            img = env.render()
-            plt.imshow(img)
-            display.clear_output(wait=True)
-            display.display(plt.gcf())
-            plt.pause(0.001)  # Adjust as needed for frame rate
         print(any(terminal))
-
-
         print(f'Episode {episode + 1} completed')
         plt.close()
 
+
+
+        
 if __name__ == '__main__':
     if os.path.isfile('trained_agents.pkl'):
         print('File exists')
@@ -192,7 +216,7 @@ if __name__ == '__main__':
             agents = pickle.load(f)
             parallel_env = simple_speaker_listener_v4.parallel_env(
             continuous_actions=True,render_mode='rgb_array')
-            visualize_agents(agents, parallel_env)
+            visualize_agents(agents, parallel_env,speed=0.25)
 
     else:
         print('File does not exist')
