@@ -3,140 +3,123 @@ import torch as T
 import torch.nn.functional as F
 from networks import ActorNetwork, CriticNetwork
 
+
 class Agent:
-    def __init__(self, actor_dims, critic_dims, n_actions, n_agents, agent_idx, 
-                 chkpt_dir, min_action, max_action, alpha=1e-4, beta=1e-3, 
-                 fc1=64, fc2=64, gamma=0.95, tau=0.01, K=4):
+    def __init__(self, actor_dims, critic_dims, n_actions,
+                 n_agents, agent_idx, chkpt_dir, min_action,
+                 max_action, alpha=1e-4, beta=1e-3, fc1=64,
+                 fc2=64, gamma=0.95, tau=0.01):
         self.gamma = gamma
         self.tau = tau
-        self.K = K  # Number of sub-policies
         self.n_actions = n_actions
-        agent_name = f'agent_{agent_idx}'
+        agent_name = 'agent_%s' % agent_idx
         self.agent_idx = agent_idx
         self.min_action = min_action
         self.max_action = max_action
-    
-        # Initialize multiple actor and critic networks
-        self.actors = [ActorNetwork(alpha, actor_dims, fc1, fc2, n_actions,
-                                     chkpt_dir=chkpt_dir,
-                                     name=f'{agent_name}_actor_{k}')
-                       for k in range(self.K)]
-        self.target_actors = [ActorNetwork(alpha, actor_dims, fc1, fc2, n_actions,
-                                           chkpt_dir=chkpt_dir,
-                                           name=f'{agent_name}_target_actor_{k}')
-                              for k in range(self.K)]
 
-        # Single critic per agent as in standard MADDPG
+        self.actor = ActorNetwork(alpha, actor_dims, fc1, fc2, n_actions,
+                                  chkpt_dir=chkpt_dir,
+                                  name=agent_name+'_actor')
+        self.target_actor = ActorNetwork(alpha, actor_dims, fc1, fc2,
+                                         n_actions, chkpt_dir=chkpt_dir,
+                                         name=agent_name+'target__actor')
+
         self.critic = CriticNetwork(beta, critic_dims, fc1, fc2,
                                     chkpt_dir=chkpt_dir,
-                                    name=f'{agent_name}_critic')
+                                    name=agent_name+'_critic')
         self.target_critic = CriticNetwork(beta, critic_dims, fc1, fc2,
                                            chkpt_dir=chkpt_dir,
-                                           name=f'{agent_name}_target_critic')
+                                           name=agent_name+'_target__critic')
 
         self.update_network_parameters(tau=1)
 
-    # Choose action from a randomly selected sub-policy
     def choose_action(self, observation, evaluate=False):
-        selected_policy = np.random.choice(self.actors)
-        return self._choose_action_from_policy(selected_policy, observation, evaluate)
+        state = T.tensor(observation[np.newaxis, :], dtype=T.float,
+                         device=self.actor.device)
+        actions = self.actor.forward(state)
+        noise = T.randn(size=(self.n_actions,)).to(self.actor.device)
+        noise *= T.tensor(1 - int(evaluate))
+        action = T.clamp(actions + noise,
+                         T.tensor(self.min_action, device=self.actor.device),
+                         T.tensor(self.max_action, device=self.actor.device))
+        return action.data.cpu().numpy()[0]
 
-    def _choose_action_from_policy(self, policy, observation, evaluate):
-        observation = np.array(observation)
-        state = T.tensor(observation, dtype=T.float, device=policy.device).unsqueeze(0)
-        actions = policy.forward(state)
-        if not evaluate:
-            noise = T.randn(size=(self.n_actions,), device=policy.device)
-            actions += noise
-        min_action = T.tensor(self.min_action, device=policy.device, dtype=T.float)
-        max_action = T.tensor(self.max_action, device=policy.device, dtype=T.float)
-        actions = T.clamp(actions, min_action, max_action)
-        return actions.cpu().data.numpy().flatten()
+    def update_network_parameters(self, tau=None):
+        tau = tau or self.tau
 
-    def learn(self, memory, agent_list, n_agents):
+        src = self.actor
+        dest = self.target_actor
+
+        for param, target in zip(src.parameters(), dest.parameters()):
+            target.data.copy_(tau * param.data + (1 - tau) * target.data)
+
+        src = self.critic
+        dest = self.target_critic
+
+        for param, target in zip(src.parameters(), dest.parameters()):
+            target.data.copy_(tau * param.data + (1 - tau) * target.data)
+
+    def save_models(self):
+        self.actor.save_checkpoint()
+        self.target_actor.save_checkpoint()
+        self.critic.save_checkpoint()
+        self.target_critic.save_checkpoint()
+
+    def load_models(self):
+        self.actor.load_checkpoint()
+        self.target_actor.load_checkpoint()
+        self.critic.load_checkpoint()
+        self.target_critic.load_checkpoint()
+
+    def learn(self, memory, agent_list):
         if not memory.ready():
             return
 
-        actor_states, states, actions, rewards, actor_new_states, states_, terminal = memory.sample_buffer()
+        actor_states, states, actions, rewards,\
+            actor_new_states, states_, dones = memory.sample_buffer()
 
-        device = self.actors[0].device  # Assuming all actors are on the same device
+        device = self.actor.device
 
-        # Convert to tensors
-        states = T.tensor(states, dtype=T.float, device=device)
-        rewards = T.tensor(rewards, dtype=T.float, device=device)
-        dones = T.tensor(terminal, dtype=T.float, device=device)
-        actions = T.stack([T.tensor(actions[idx], device=device, dtype=T.float) for idx in range(n_agents)], dim=1)
-        
-        # Process actor_new_states for each agent separately
-        actor_new_states_tensors = [T.tensor(actor_new_states[idx], device=device, dtype=T.float) for idx in range(n_agents)]
+        states = T.tensor(np.array(states), dtype=T.float, device=device)
+        rewards = T.tensor(np.array(rewards), dtype=T.float, device=device)
+        states_ = T.tensor(np.array(states_), dtype=T.float, device=device)
+        dones = T.tensor(np.array(dones), device=device)
 
-        # Loop through each actor network for ensemble policies
-        for k, actor in enumerate(self.actors):
-            with T.no_grad():
-                # Concatenate new actions for all agents
-                new_actions = []
-                for idx, other_agent in enumerate(agent_list):
-                    target_actor = other_agent.target_actors[k]
-                    new_action = target_actor(actor_new_states_tensors[idx])
-                    new_actions.append(new_action)
-                new_actions = T.cat(new_actions, dim=1)
+        actor_states = [T.tensor(actor_states[idx],
+                                 device=device, dtype=T.float)
+                        for idx in range(len(agent_list))]
+        actor_new_states = [T.tensor(actor_new_states[idx],
+                                     device=device, dtype=T.float)
+                            for idx in range(len(agent_list))]
+        actions = [T.tensor(actions[idx], device=device, dtype=T.float)
+                   for idx in range(len(agent_list))]
 
-                critic_value_ = self.target_critic(states_, new_actions).squeeze()
-                critic_value_[dones] = 0.0
-                target = rewards + self.gamma * critic_value_
-
-            # Update the critic network
-            critic_value = self.critic(states, T.cat(actions, dim=1)).squeeze()
-            critic_loss = F.mse_loss(target, critic_value)
-
-            self.critic.optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic.optimizer.step()
-
-            # Update the actor network
-            with T.no_grad():
-                # Concatenate current actions for all agents
-                current_actions = []
-                for idx, other_agent in enumerate(agent_list):
-                    current_action = other_agent.actors[k](actor_new_states_tensors[idx])
-                    current_actions.append(current_action)
-                current_actions = T.cat(current_actions, dim=1)
-
-            actor_loss = -self.critic(states, current_actions).mean()
-            actor.optimizer.zero_grad()
-            actor_loss.backward()
-            actor.optimizer.step()
-
-            # Soft update the target networks
-            self.soft_update(self.target_actors[k], actor, self.tau)
-
-        self.soft_update(self.target_critic, self.critic, self.tau)
-
-    def soft_update(self, target_network, source_network, tau):
-        for target_param, source_param in zip(target_network.parameters(), source_network.parameters()):
-            target_param.data.copy_(tau*source_param.data + (1.0-tau)*target_param.data)
-    
-    def update_network_parameters(self, tau=None):
-        if tau is None:
-            tau = self.tau
-
-        # Update the target actor network
-        for target_actor, actor in zip(self.target_actors, self.actors):
-            with T.no_grad():
-                for target_param, param in zip(target_actor.parameters(), actor.parameters()):
-                    target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
-
-        # Update the target critic network
         with T.no_grad():
-            for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
-                target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
+            new_actions = T.cat([agent.target_actor(actor_new_states[idx])
+                                 for idx, agent in enumerate(agent_list)],
+                                dim=1)
+            critic_value_ = self.target_critic.forward(
+                                states_, new_actions).squeeze()
+            critic_value_[dones[:, self.agent_idx]] = 0.0
+            target = rewards[:, self.agent_idx] + self.gamma * critic_value_
 
-    def save_models(self):
-        for k, actor in enumerate(self.actors):
-            actor.save_checkpoint(k)
-        self.critic.save_checkpoint()
+        old_actions = T.cat([actions[idx] for idx in range(len(agent_list))],
+                            dim=1)
+        critic_value = self.critic.forward(states, old_actions).squeeze()
+        critic_loss = F.mse_loss(target, critic_value)
 
-    def load_models(self):
-        for k, actor in enumerate(self.actors):
-            actor.load_checkpoint(k)
-        self.critic.load_checkpoint()
+        self.critic.optimizer.zero_grad()
+        critic_loss.backward()
+        T.nn.utils.clip_grad_norm_(self.critic.parameters(), 10.0)
+        self.critic.optimizer.step()
+
+        actions[self.agent_idx] = self.actor.forward(
+                actor_states[self.agent_idx])
+        actions = T.cat([actions[i] for i in range(len(agent_list))], dim=1)
+        actor_loss = -self.critic.forward(states, actions).mean()
+        self.actor.optimizer.zero_grad()
+        actor_loss.backward()
+        T.nn.utils.clip_grad_norm_(self.actor.parameters(), 10.0)
+        self.actor.optimizer.step()
+
+        self.update_network_parameters()

@@ -1,17 +1,18 @@
 import numpy as np
 from maddpg import MADDPG
 from buffer import MultiAgentReplayBuffer
-from pettingzoo.mpe import simple_speaker_listener_v4,  simple_adversary_v3
+from pettingzoo.mpe import simple_speaker_listener_v4
 
 
-def obs_list_to_state_vector(observations, actions):
-    # Concatenate observations and actions
-    combined = np.concatenate(observations + actions, axis=0)
-    return combined
+def obs_list_to_state_vector(observation):
+    state = np.array([])
+    for obs in observation:
+        state = np.concatenate([state, obs])
+    return state
 
 
 def run():
-    parallel_env = simple_adversary_v3.parallel_env(
+    parallel_env = simple_speaker_listener_v4.parallel_env(
             continuous_actions=True)
     _, _ = parallel_env.reset()
     n_agents = parallel_env.max_num_agents
@@ -21,14 +22,13 @@ def run():
     for agent in parallel_env.agents:
         actor_dims.append(parallel_env.observation_space(agent).shape[0])
         n_actions.append(parallel_env.action_space(agent).shape[0])
+    critic_dims = sum(actor_dims) + sum(n_actions)
 
-    # Assuming critic_dims should include the dimensions of all observations and actions
-    critic_dims = sum(actor_dims) + sum(n_actions) * n_agents
-        
     maddpg_agents = MADDPG(actor_dims, critic_dims, n_agents, n_actions,
-                           env=parallel_env, gamma=0.95, alpha=1e-4, beta=1e-3, K=4)  # Include the K parameter here
-    memory = MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims, n_actions, n_agents, batch_size=1024)
-
+                           env=parallel_env, gamma=0.95, alpha=1e-4, beta=1e-3)
+    critic_dims = sum(actor_dims)
+    memory = MultiAgentReplayBuffer(1_000_000, critic_dims, actor_dims,
+                                    n_actions, n_agents, batch_size=1024)
 
     EVAL_INTERVAL = 1000
     MAX_STEPS = 10_00000
@@ -41,7 +41,6 @@ def run():
     score = evaluate(maddpg_agents, parallel_env, episode, total_steps)
     eval_scores.append(score)
     eval_steps.append(total_steps)
-    
 
     while total_steps < MAX_STEPS:
         obs, _ = parallel_env.reset()
@@ -58,14 +57,12 @@ def run():
             list_obs_ = list(obs_.values())
             list_trunc = list(trunc.values())
 
-            # When storing transition, make sure the state vector is correctly formed
-            state = obs_list_to_state_vector(list_obs, list_actions)
-            state_ = obs_list_to_state_vector(list_obs_, list_actions) 
-            
+            state = obs_list_to_state_vector(list_obs)
+            state_ = obs_list_to_state_vector(list_obs_)
 
             terminal = [d or t for d, t in zip(list_done, list_trunc)]
-            memory.store_transition(list_obs, state, list_actions, list_reward, list_obs_, state_, terminal)
-
+            memory.store_transition(list_obs, state, list_actions, list_reward,
+                                    list_obs_, state_, terminal)
 
             if total_steps % 100 == 0:
                 maddpg_agents.learn(memory)
@@ -144,7 +141,7 @@ if __name__ == '__main__':
         print('File exists')
         with open('trained_agents.pkl', 'rb') as f:
             agents = pickle.load(f)
-            parallel_env = simple_adversary_v3.parallel_env(
+            parallel_env = simple_speaker_listener_v4.parallel_env(
             continuous_actions=True,render_mode='rgb_array')
             visualize_agents(agents, parallel_env)
 
