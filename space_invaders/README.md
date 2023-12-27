@@ -1,7 +1,8 @@
 
 
 ## Introduction
-This repository contains [brief description of the repository content, such as "machine learning models for multi-agent environments using MADDPG"]. The source code and methodologies are based on the tutorial available at [PettingZoo Tutorial](https://pettingzoo.farama.org/main/tutorials/agilerl/MADDPG/).
+This repository contains a tutorial to show how to train an MADDPG agent on the space invaders atari environment.
+. The source code and methodologies are based on the tutorial available at [PettingZoo Tutorial](https://pettingzoo.farama.org/main/tutorials/agilerl/MADDPG/).
 
 ## Prerequisites
 Before you begin, ensure you have met the following requirements:
@@ -31,7 +32,8 @@ To set up your environment to run the code, follow these steps:
 
 ## Usage
 Here's how you can run the code:
-- [Provide instructions on how to run the application or scripts]
+- python train.py
+- python evaluate.py
 
 ## Fixing the ParallelAtariEnv Error
 If you encounter the following error:
@@ -48,9 +50,3 @@ num_skips = int(np.random.randint(low, high + 1))
 
 This should resolve the issue by correctly accessing the `np.random` module.
 
-## Contributing
-Contributions to this project are welcome. Here's how you can help:
-- [Provide instructions for contributing, such as submitting pull requests or contacting the maintainer]
-
-## License
-[Include information about the license, or state that it's available in the LICENSE file]
