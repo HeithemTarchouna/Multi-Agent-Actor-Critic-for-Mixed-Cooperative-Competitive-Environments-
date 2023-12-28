@@ -10,6 +10,8 @@ Before you begin, ensure you have met the following requirements:
 - pip (Python package manager)
 
 ## Installation
+**USE LINUX**
+
 To set up your environment to run the code, follow these steps:
 
 1. **Clone the Repository**
@@ -28,6 +30,8 @@ To set up your environment to run the code, follow these steps:
 3. **Install Dependencies**
    ```bash
    pip install -r requirements.txt
+   pip install autorom
+   !AutoROM #Accept licence 
    ```
 
 ## Usage
