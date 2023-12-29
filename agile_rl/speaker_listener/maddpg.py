@@ -10,7 +10,7 @@ import torch.optim as optim
 
 
 from agilerl.wrappers.make_evolvable import MakeEvolvable
-from agilerl.wrappers.pettingzoo_wrappers import PettingZooVectorizationParallelWrapper
+from wrappers2 import PettingZooVectorizationParallelWrapper
 
 from networks import EvolvableCNN, EvolvableMLP
 
