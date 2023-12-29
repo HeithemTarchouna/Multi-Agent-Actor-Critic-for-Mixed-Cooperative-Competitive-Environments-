@@ -9,10 +9,10 @@ import torch
 from pettingzoo.mpe import simple_speaker_listener_v4,simple_adversary_v3
 from tqdm import trange
 
-from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
-from agilerl.hpo.mutation import Mutations
-from agilerl.hpo.tournament import TournamentSelection
-from agilerl.utils.utils import initialPopulation
+from multi_agent_replay_buffer import MultiAgentReplayBuffer
+from mutation import Mutations
+from tournament import TournamentSelection
+from utils import initialPopulation
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -1,62 +1,82 @@
 import numpy as np
 
 class MultiAgentReplayBuffer:
-    def __init__(self, max_size, critic_dims, actor_dims, n_actions, n_agents, batch_size):
+    def __init__(self, max_size, critic_dims, actor_dims, 
+            n_actions, n_agents, batch_size,agent_names):
         self.mem_size = max_size
         self.mem_cntr = 0
         self.n_agents = n_agents
+        self.actor_dims = actor_dims
         self.batch_size = batch_size
+        self.n_actions = n_actions
+        self.agent_names = agent_names
 
-        self.memory = {
-            'state': np.zeros((self.mem_size, critic_dims)), #global state : observations of all agents
-            'new_state': np.zeros((self.mem_size, critic_dims)), #global new state, updated after each agent's step
-            'reward': np.zeros((self.mem_size, n_agents)), # each agent's reward
-            'terminal': np.zeros((self.mem_size, n_agents), dtype=bool) # each agent's done
-        }
+        self.state_memory = np.zeros((self.mem_size, critic_dims))
+        self.new_state_memory = np.zeros((self.mem_size, critic_dims))
+        self.reward_memory = np.zeros((self.mem_size, n_agents))
+        self.terminal_memory = np.zeros((self.mem_size, n_agents), dtype=bool)
 
-        self.actor_memory = {
-            'state': [np.zeros((self.mem_size, actor_dims[i])) for i in range(n_agents)], # each agent's observations
-            'new_state': [np.zeros((self.mem_size, actor_dims[i])) for i in range(n_agents)], # each agent's new observations
-            'action': [np.zeros((self.mem_size, n_actions[i])) for i in range(n_agents)] # each agent's action
-        }
+        self.init_actor_memory()
 
-    def store_transition(self, raw_obs, state, action, reward, raw_obs_, state_, done):
-        # index of the current transition in the replay buffer, modulo the buffer size to overwrite old transitions (it's basicall a circular )
-        index = self.mem_cntr % self.mem_size 
+    def init_actor_memory(self):
+        self.actor_state_memory = {}
+        self.actor_new_state_memory = {}
+        self.actor_action_memory = {}
 
-        for agent_idx in range(self.n_agents):
+        for agent_name in self.agent_names:
+            self.actor_state_memory[f"{agent_name}"] = np.zeros((self.mem_size, self.actor_dims[agent_name]))
+            self.actor_new_state_memory[f"{agent_name}"] = np.zeros((self.mem_size, self.actor_dims[agent_name]))
+            self.actor_action_memory[f"{agent_name}"] = np.zeros((self.mem_size, self.n_actions[agent_name]))
 
-            self.actor_memory['state'][agent_idx][index] = raw_obs[agent_idx] # assign the oservtion of each agent to the corresponding agent's memory
-            self.actor_memory['new_state'][agent_idx][index] = raw_obs_[agent_idx] # assign the new oservtion of each agent to the corresponding agent's memory
-            self.actor_memory['action'][agent_idx][index] = action[agent_idx] # assign the action of each agent to the corresponding agent's memory
 
-        self.memory['state'][index] = state # assign the global observation to the global memory
-        self.memory['new_state'][index] = state_ # assign the global new observation to the global memory
-        self.memory['reward'][index] = reward # assign the global reward to the global memory
-        self.memory['terminal'][index] = done # assign the global done to the global memory
+    def store_transition(self, raw_obs, state, action, reward, 
+                               raw_obs_, state_, done):
+        # this introduces a bug: if we fill up the memory capacity and then
+        # zero out our actor memory, the critic will still have memories to access
+        # while the actor will have nothing but zeros to sample. Obviously
+        # not what we intend.
+        # In reality, there's no problem with just using the same index
+        # for both the actor and critic states. I'm not sure why I thought
+        # this was necessary in the first place. Sorry for the confusion!
 
+        #if self.mem_cntr % self.mem_size == 0 and self.mem_cntr > 0:
+        #    self.init_actor_memory()
+        
+        index = self.mem_cntr % self.mem_size
+        
+
+        for agent_idx, agent_name in enumerate(self.agent_names):
+            self.actor_state_memory[agent_name][index] = raw_obs[agent_name]
+            self.actor_new_state_memory[agent_name][index] = raw_obs_[agent_name]
+            self.actor_action_memory[agent_name][index] = action[agent_name]
+
+        self.state_memory[index] = state
+        self.new_state_memory[index] = state_
+        self.reward_memory[index] = [i for i in reward.values()]
+        self.terminal_memory[index] = done
         self.mem_cntr += 1
 
     def sample_buffer(self):
-        max_mem = min(self.mem_cntr, self.mem_size) # if the memory is not full, we sample from the current memory size, otherwise we sample from the max memory size
-
-        batch = np.random.choice(max_mem, self.batch_size, replace=False) # return a list of batch_size random integers from 0 to max_mem
-
-
-        sample = {
-            'states': self.memory['state'][batch],
-            'new_states': self.memory['new_state'][batch],
-            'rewards': self.memory['reward'][batch],
-            'terminals': self.memory['terminal'][batch],
-            'actor_states': [self.actor_memory['state'][i][batch] for i in range(self.n_agents)],
-            'actor_new_states': [self.actor_memory['new_state'][i][batch] for i in range(self.n_agents)],
-            'actions': [self.actor_memory['action'][i][batch] for i in range(self.n_agents)]
-        }
+        max_mem = min(self.mem_cntr, self.mem_size)
         
-        #  (the dataset) get the sample of the global state, global new state, global reward, global done, each agent's observation, each agent's new observation, each agent's action
 
-        return sample
+        batch = np.random.choice(max_mem, self.batch_size, replace=False)
+        states = self.state_memory[batch]
+        rewards = self.reward_memory[batch]
+        states_ = self.new_state_memory[batch]
+        terminal = self.terminal_memory[batch]
+
+        actor_states = []
+        actor_new_states = []
+        actions = []
+        for agent_name in self.agent_names:
+            actor_states.append(self.actor_state_memory[agent_name][batch])
+            actor_new_states.append(self.actor_new_state_memory[agent_name][batch])
+            actions.append(self.actor_action_memory[agent_name][batch])
+
+        return actor_states, states, actions, rewards, \
+               actor_new_states, states_, terminal
 
     def ready(self):
-        # we have enough transitions in the buffer to start learning (batch_size)
-        return self.mem_cntr >= self.batch_size
+        if self.mem_cntr >= self.batch_size:
+            return True

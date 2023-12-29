@@ -5,57 +5,67 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
+
+
+# T.autograd.set_detect_anomaly(True)
 class CriticNetwork(nn.Module):
-    # Critic Network takes the combined state and action information of all agents as input, not just for a single agent.
-    # Returns the expected (Q-value) of taking certain actions in certain states,
-    # considering both the current policy of its agent (Actor) and the policies of other agents.
-    def __init__(self, beta, input_dims, fc1, fc2,
-                 name, chkpt_dir):
+    def __init__(self, beta, input_dims, fc1_dims, fc2_dims, 
+                    n_agents, n_actions, name, chkpt_dir):
+        #print(f"{name} has {n_actions} actions")
         super(CriticNetwork, self).__init__()
 
         self.chkpt_file = os.path.join(chkpt_dir, name)
-        self.fc1 = nn.Linear(input_dims, fc1)
-        self.fc2 = nn.Linear(fc1, fc2)
-        self.q = nn.Linear(fc2, 1)
+
+        self.fc1 = nn.Linear(input_dims, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
+        self.q = nn.Linear(fc2_dims, 1)
 
         self.optimizer = optim.Adam(self.parameters(), lr=beta)
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
-
+ 
         self.to(self.device)
 
     def forward(self, state, action):
+        #print(action.shape)
+        #print(state.shape)
         x = F.relu(self.fc1(T.cat([state, action], dim=1)))
         x = F.relu(self.fc2(x))
         q = self.q(x)
 
         return q
 
+    def save_checkpoint(self):
+        T.save(self.state_dict(), self.chkpt_file)
+
+    def load_checkpoint(self):
+        self.load_state_dict(T.load(self.chkpt_file))
+
 
 class ActorNetwork(nn.Module):
-    # ActorNetwork in MADDPG represents the policy function for an agent.
-    # It takes the agent's current state as input and outputs the action values.
-    def __init__(self, alpha, input_dims, fc1, fc2,
+    def __init__(self, alpha, input_dims, fc1_dims, fc2_dims, 
                  n_actions, name, chkpt_dir):
         super(ActorNetwork, self).__init__()
 
         self.chkpt_file = os.path.join(chkpt_dir, name)
 
-        self.fc1 = nn.Linear(input_dims, fc1)
-        self.fc2 = nn.Linear(fc1, fc2)
-        self.pi = nn.Linear(fc2, n_actions)
+        self.fc1 = nn.Linear(input_dims, fc1_dims)
+        self.fc2 = nn.Linear(fc1_dims, fc2_dims)
+        self.pi = nn.Linear(fc2_dims, n_actions)
 
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
-
+ 
         self.to(self.device)
 
     def forward(self, state):
-        x = self.fc1(state)
-        x = F.relu(x)
-        x = self.fc2(x)
-        x = F.relu(x)
-        pi = self.pi(x)
-        pi = T.tanh(pi) # the action values are between -1 and 1
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
+        pi = T.softmax(self.pi(x), dim=1)
+
         return pi
 
+    def save_checkpoint(self):
+        T.save(self.state_dict(), self.chkpt_file)
 
+    def load_checkpoint(self):
+        self.load_state_dict(T.load(self.chkpt_file))
