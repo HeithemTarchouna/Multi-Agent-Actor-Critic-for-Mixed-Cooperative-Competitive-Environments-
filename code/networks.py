@@ -4,14 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-
-
-
 # T.autograd.set_detect_anomaly(True)
 class CriticNetwork(nn.Module):
     def __init__(self, beta, input_dims, fc1_dims, fc2_dims, 
                     n_agents, n_actions, name, chkpt_dir):
-        #print(f"{name} has {n_actions} actions")
         super(CriticNetwork, self).__init__()
 
         self.chkpt_file = os.path.join(chkpt_dir, name)
@@ -26,26 +22,30 @@ class CriticNetwork(nn.Module):
         self.to(self.device)
 
     def forward(self, state, action):
-        #print(action.shape)
-        #print(state.shape)
         x = F.relu(self.fc1(T.cat([state, action], dim=1)))
         x = F.relu(self.fc2(x))
         q = self.q(x)
 
         return q
 
-    def save_checkpoint(self):
-        T.save(self.state_dict(), self.chkpt_file)
+    def save_checkpoint(self,type):
+        checkpoint_temp = self.chkpt_file + type
+        os.makedirs(os.path.dirname(checkpoint_temp), exist_ok=True)
+        checkpoint_path = self.chkpt_file + ".pt"  # Ensure the file has an extension
+        T.save(self.state_dict(), checkpoint_path)
 
-    def load_checkpoint(self):
-        self.load_state_dict(T.load(self.chkpt_file))
+    
+    # def load_checkpoint(self,type):
+    #     checkpoint_temp = self.chkpt_file + type
+    #     checkpoint_path = checkpoint_temp + ".pt"
+    #     return 
+    #     self.load_state_dict(T.load(checkpoint_path))
 
 
 class ActorNetwork(nn.Module):
     def __init__(self, alpha, input_dims, fc1_dims, fc2_dims, 
                  n_actions, name, chkpt_dir):
         super(ActorNetwork, self).__init__()
-
         self.chkpt_file = os.path.join(chkpt_dir, name)
 
         self.fc1 = nn.Linear(input_dims, fc1_dims)
@@ -64,8 +64,14 @@ class ActorNetwork(nn.Module):
 
         return pi
 
-    def save_checkpoint(self):
-        T.save(self.state_dict(), self.chkpt_file)
+    def save_checkpoint(self,type):
+        checkpoint_temp = self.chkpt_file + type
+        os.makedirs(os.path.dirname(checkpoint_temp), exist_ok=True)
+        checkpoint_path = checkpoint_temp + ".pt"  # Ensure the file has an extension
+        T.save(self.state_dict(), checkpoint_path)
 
-    def load_checkpoint(self):
-        self.load_state_dict(T.load(self.chkpt_file))
+    def load_checkpoint(self,type):
+        checkpoint_temp = self.chkpt_file + type
+        checkpoint_path = checkpoint_temp + ".pt"  # Ensure the file has an extension
+        self.load_state_dict(T.load(checkpoint_path))
+

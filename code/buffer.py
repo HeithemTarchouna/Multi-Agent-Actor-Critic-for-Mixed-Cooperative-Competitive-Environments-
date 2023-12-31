@@ -19,14 +19,17 @@ class MultiAgentReplayBuffer:
         self.init_actor_memory()
 
     def init_actor_memory(self):
-        self.actor_state_memory = {}
-        self.actor_new_state_memory = {}
-        self.actor_action_memory = {}
+        self.actor_state_memory = []
+        self.actor_new_state_memory = []
+        self.actor_action_memory = []
 
-        for agent_name in self.agent_names:
-            self.actor_state_memory[f"{agent_name}"] = np.zeros((self.mem_size, self.actor_dims[agent_name]))
-            self.actor_new_state_memory[f"{agent_name}"] = np.zeros((self.mem_size, self.actor_dims[agent_name]))
-            self.actor_action_memory[f"{agent_name}"] = np.zeros((self.mem_size, self.n_actions[agent_name]))
+        for i in range(self.n_agents):
+            self.actor_state_memory.append(
+                            np.zeros((self.mem_size, self.actor_dims[i])))
+            self.actor_new_state_memory.append(
+                            np.zeros((self.mem_size, self.actor_dims[i])))
+            self.actor_action_memory.append(
+                            np.zeros((self.mem_size, self.n_actions[i])))
 
 
     def store_transition(self, raw_obs, state, action, reward, 
@@ -43,12 +46,11 @@ class MultiAgentReplayBuffer:
         #    self.init_actor_memory()
         
         index = self.mem_cntr % self.mem_size
-        
 
         for agent_idx, agent_name in enumerate(self.agent_names):
-            self.actor_state_memory[agent_name][index] = raw_obs[agent_name]
-            self.actor_new_state_memory[agent_name][index] = raw_obs_[agent_name]
-            self.actor_action_memory[agent_name][index] = action[agent_name]
+            self.actor_state_memory[agent_idx][index] = raw_obs[agent_name]
+            self.actor_new_state_memory[agent_idx][index] = raw_obs_[agent_name]
+            self.actor_action_memory[agent_idx][index] = action[agent_name]
 
         self.state_memory[index] = state
         self.new_state_memory[index] = state_
@@ -69,10 +71,10 @@ class MultiAgentReplayBuffer:
         actor_states = []
         actor_new_states = []
         actions = []
-        for agent_name in self.agent_names:
-            actor_states.append(self.actor_state_memory[agent_name][batch])
-            actor_new_states.append(self.actor_new_state_memory[agent_name][batch])
-            actions.append(self.actor_action_memory[agent_name][batch])
+        for agent_idx in range(self.n_agents):
+            actor_states.append(self.actor_state_memory[agent_idx][batch])
+            actor_new_states.append(self.actor_new_state_memory[agent_idx][batch])
+            actions.append(self.actor_action_memory[agent_idx][batch])
 
         return actor_states, states, actions, rewards, \
                actor_new_states, states_, terminal

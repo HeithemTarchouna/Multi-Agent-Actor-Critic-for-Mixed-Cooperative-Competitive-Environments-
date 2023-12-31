@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-from agilerl.wrappers.make_evolvable import MakeEvolvable
+from wrappers import MakeEvolvable
 from wrappers2 import PettingZooVectorizationParallelWrapper
 
 from networks import EvolvableCNN, EvolvableMLP
