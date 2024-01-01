@@ -1,3 +1,6 @@
 venv/
 agile_rl/speaker_listener/__pycache__/mutation.cpython-311.pyc
 __pycache__/
+*.pyc
+*.pyc
+code/__pycache__/buffer.cpython-310.pyc

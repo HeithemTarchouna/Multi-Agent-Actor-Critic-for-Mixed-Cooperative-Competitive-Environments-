@@ -1,11 +1,22 @@
 import numpy as np
 from maddpg import MADDPG
-from pettingzoo.mpe import simple_adversary_v3,simple_speaker_listener_v4,simple_spread_v3,simple_reference_v3,simple_tag_v3,simple_crypto_v3
+from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3
 import warnings
 import time
 import matplotlib.pyplot as plt
 from IPython import display
-
+from tqdm import tqdm
+def plot_mean_agent_rewards(mean_agent_rewards, agent_name, scenario):
+    plt.figure(figsize=(12, 6))
+    plt.xlabel('Episode')
+    plt.ylabel('Mean Agent Reward')
+    plt.title(f'Mean Agent Reward Progress - {scenario} (Agent {agent_name})')
+    plt.plot(range(1, len(mean_agent_rewards) + 1), mean_agent_rewards, label=f'Agent {agent_name}')
+    plt.legend()
+    plt.grid()
+    plt.savefig(f'Mean_Agent_Reward_Progress_{scenario}_Agent_{agent_name}.png')
+    plt.show()
+    
 def obs_list_to_state_vector(observation):
     state = np.array([])
     for obs in observation:
@@ -57,36 +68,37 @@ def visualize_agents(agents, env, n_episodes=20, speed=0.1):
         print(f'Episode {episode + 1} completed')
         plt.close()
 
-def solve_env(env,scenario,N_GAMES,evaluate,k=1):
-    print("Solving env",scenario)
+def solve_env(env, scenario, N_GAMES, evaluate, k=1, plot=True):
+    print("Solving env", scenario)
     obs = env.reset()
- 
+
     n_agents = env.num_agents
     actor_dims = [env.observation_spaces[agent_name].shape[0] for agent_name in env.agents]
     n_actions = [env.action_spaces[agent_name].shape[0] for agent_name in env.agents]
     critic_dims = sum(actor_dims) + sum(n_actions)
-    # what eveyone is seeing
+    # what everyone is seeing
     whole_state_observation_dims = sum(actor_dims)
 
-    maddpg_agents = MADDPG(actor_dims, critic_dims,whole_state_observation_dims, n_agents, n_actions,
+    maddpg_agents = MADDPG(actor_dims, critic_dims, whole_state_observation_dims, n_agents, n_actions,
                            fc1=32, fc2=32,
                            alpha=0.01, beta=0.01, scenario=scenario,
-                           chkpt_dir='tmp/maddpg/',env=env,k=k)
- 
-    LOAD_TYPE = ["Regular","Best"] # Regular: save every 10k, Best: save only if avg_score > best_score
+                           chkpt_dir='tmp/maddpg/', env=env, k=k)
+
+    LOAD_TYPE = ["Regular", "Best"]  # Regular: save every 10k, Best: save only if avg_score > best_score
     PRINT_INTERVAL = 500
     SAVE_INTERVAL = 10000
     MAX_STEPS = 25
     total_steps = 0
     score_history = []
     best_score = -3
- 
+    agent_rewards = {agent_name: [] for agent_name in env.agents}
+    mean_agent_rewards = {agent_name: [] for agent_name in env.agents}
+
     if evaluate:
-        maddpg_agents.load_checkpoint(LOAD_TYPE[1]) # load best
-        visualize_agents(maddpg_agents, env, n_episodes=20, speed=10)
+        maddpg_agents.load_checkpoint(LOAD_TYPE[1])  # load best
     else:
-        for i in range(N_GAMES):
-            obs,_ = env.reset()
+        for i in tqdm(range(N_GAMES), desc="Training"):
+            obs, _ = env.reset()
             score = 0
             done = [False] * n_agents
             episode_step = 0
@@ -94,54 +106,74 @@ def solve_env(env,scenario,N_GAMES,evaluate,k=1):
             maddpg_agents.randomly_choose_subpolicy()
             while not any(done):
                 actions = maddpg_agents.choose_action(obs)
-    
+
                 obs_, reward, termination, truncation, _ = env.step(actions)
-    
+
                 state = np.concatenate([i for i in obs.values()])
                 state_ = np.concatenate([i for i in obs_.values()])
-    
+
                 if episode_step >= MAX_STEPS:
                     done = [True] * n_agents
-    
+
                 if any(termination.values()) or any(truncation.values()) or (episode_step >= MAX_STEPS):
                     done = [True] * n_agents
-    
+
                 maddpg_agents.store_transition(obs, state, actions, reward, obs_, state_, done)
-    
+
                 if total_steps % 5 == 0:
                     maddpg_agents.learn()
-    
+
                 obs = obs_
-    
+
+                for agent_name, r in reward.items():
+                    agent_rewards[agent_name].append(r)
+
                 score += sum(reward.values())
                 total_steps += 1
                 episode_step += 1
-    
-    
+
             score_history.append(score)
-            avg_score = np.mean(score_history[-100:]) 
+            avg_score = np.mean(score_history[-100:])
             if (avg_score > best_score) and (i > PRINT_INTERVAL):
                 print(" avg_score, best_score", avg_score, best_score)
                 maddpg_agents.save_checkpoint(LOAD_TYPE[1])
 
-
                 best_score = avg_score
-            if i % PRINT_INTERVAL == 0 and i > 0:
-                print('episode', i, 'average score {:.1f}'.format(avg_score))
-            if i % SAVE_INTERVAL == 0 and i >0 :
+            if i % SAVE_INTERVAL == 0 and i > 0:
                 maddpg_agents.save_checkpoint(LOAD_TYPE[0])
 
+            # Compute mean agent rewards
+            for agent_name, rewards in agent_rewards.items():
+                mean_agent_reward = np.mean(rewards)
+                mean_agent_rewards[agent_name].append(mean_agent_reward)
 
-env1,scenario1 = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True,render_mode="rgb_array"),"predator_prey"
-env2,scenario2 = simple_reference_v3.parallel_env(max_cycles=25, continuous_actions=True),"Physical_Deception"
-env3,scenario3 = simple_speaker_listener_v4.parallel_env(max_cycles=25, continuous_actions=True,render_mode="rgb_array"),"Cooperative_Communication"
-env4,scenario4 = simple_crypto_v3.parallel_env(max_cycles=25, continuous_actions=True),"Covert_Communication"
-env5,scenario5 = simple_spread_v3.parallel_env(max_cycles=25, continuous_actions=True),"Cooperative_Navigation"
-env6,scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True,render_mode='rgb_array'),"Keep_Away"
+    if plot:
+        # Plot for all agents
+        plt.figure(figsize=(12, 6))
+        plt.xlabel('Episode')
+        plt.ylabel('Mean Agent Reward')
+        plt.title(f'Mean Agent Reward Progress - {scenario}')
+        for agent_name, mean_rewards in mean_agent_rewards.items():
+            plt.plot(range(1, len(mean_rewards) + 1), mean_rewards, label=f'Agent {agent_name}')
+        plt.legend()
+        plt.grid()
+        plt.savefig(f'Mean_Agent_Reward_Progress_{scenario}.png')
+        plt.show()
 
-envs =[env1,env2,env3,env4,env5,env6]
-scenarios = [scenario1,scenario2,scenario3,scenario4,scenario5,scenario6]
+        # Plot for 'agent_0' only
+        agent_name = 'agent_0'
+        if agent_name in mean_agent_rewards:
+            plot_mean_agent_rewards(mean_agent_rewards[agent_name], agent_name, scenario)
 
 
-solve_env(env1,scenario1,N_GAMES=25_000,evaluate=True,k=3)
+env1, scenario1 = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+env2, scenario2 = simple_reference_v3.parallel_env(max_cycles=25, continuous_actions=True), "Physical_Deception"
+env3, scenario3 = simple_speaker_listener_v4.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "Cooperative_Communication"
+env4, scenario4 = simple_crypto_v3.parallel_env(max_cycles=25, continuous_actions=True), "Covert_Communication"
+env5, scenario5 = simple_spread_v3.parallel_env(max_cycles=25, continuous_actions=True), "Cooperative_Navigation"
+env6, scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True, render_mode='rgb_array'), "Keep_Away"
 
+envs = [env1, env2, env3, env4, env5, env6]
+scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
+
+solve_env(env1, scenario1, N_GAMES=25_000, evaluate=False, k=3, plot=True)
