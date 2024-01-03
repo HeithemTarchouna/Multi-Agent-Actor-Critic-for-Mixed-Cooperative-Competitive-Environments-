@@ -253,8 +253,11 @@ if __name__ == '__main__':
     envs = [env1, env2, env3, env4, env5, env6] # remove env if not needed
     scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
 
-    # Specify different values of k to compare
-    k_values = [1, 2]  # Add more values if needed
+    # K = 4  Cooperative_Communication
+    # K = 3  keep-away and cooperative navigation environments,
+    # K = 2 for predator-prey
+    # 
+    k_values = [1, 3]  # Add more values if needed
 
     for env, scenario in zip(envs, scenarios):
-        solve_env_with_subpolicies(env, scenario, N_GAMES=50, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)
+        solve_env_with_subpolicies(env, scenario, N_GAMES=25_000, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)
