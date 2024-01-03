@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from maddpg import MADDPG
 from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3
@@ -6,7 +7,47 @@ import time
 import matplotlib.pyplot as plt
 from IPython import display
 from tqdm import tqdm
-def plot_mean_agent_rewards(mean_agent_rewards, agent_name, scenario):
+
+    
+# Create a function to save plots
+def save_plot(plt, filename, output_dir):
+    if not os.path.exists(output_dir):  # Check if the output directory exists, create it if not
+        os.makedirs(output_dir)
+    plt.savefig(os.path.join(output_dir, filename))
+
+# Define plotting functions without output directory argument
+def plot_average_episode_rewards(average_rewards, scenario, output_dir):
+    plt.figure(figsize=(12, 6))
+    plt.xlabel('Episode')
+    plt.ylabel('Average Episode Reward')
+    plt.title(f'Average Episode Reward Progress - {scenario}')
+    plt.plot(range(1, len(average_rewards) + 1), average_rewards)
+    plt.grid()
+    save_plot(plt, f'Average_Episode_Reward_Progress_{scenario}.png', output_dir)
+
+def plot_individual_agent_rewards(agent_rewards, scenario, output_dir):
+    plt.figure(figsize=(12, 6))
+    plt.xlabel('Episode')
+    plt.ylabel('Agent Reward')
+    plt.title(f'Individual Agent Reward Progress - {scenario}')
+    
+    for agent_name, rewards in agent_rewards.items():
+        plt.plot(range(1, len(rewards) + 1), rewards, label=f'Agent {agent_name}')
+    
+    plt.legend()
+    plt.grid()
+    save_plot(plt, f'Individual_Agent_Reward_Progress_{scenario}.png', output_dir)
+
+def plot_episode_lengths(episode_lengths, scenario, output_dir):
+    plt.figure(figsize=(12, 6))
+    plt.xlabel('Episode')
+    plt.ylabel('Episode Length')
+    plt.title(f'Episode Length Progress - {scenario}')
+    plt.plot(range(1, len(episode_lengths) + 1), episode_lengths)
+    plt.grid()
+    save_plot(plt, f'Episode_Length_Progress_{scenario}.png', output_dir)
+
+def plot_mean_agent_rewards(mean_agent_rewards, agent_name, scenario, output_dir):
     plt.figure(figsize=(12, 6))
     plt.xlabel('Episode')
     plt.ylabel('Mean Agent Reward')
@@ -14,9 +55,8 @@ def plot_mean_agent_rewards(mean_agent_rewards, agent_name, scenario):
     plt.plot(range(1, len(mean_agent_rewards) + 1), mean_agent_rewards, label=f'Agent {agent_name}')
     plt.legend()
     plt.grid()
-    plt.savefig(f'Mean_Agent_Reward_Progress_{scenario}_Agent_{agent_name}.png')
-    plt.show()
-    
+    save_plot(plt, f'Mean_Agent_Reward_Progress_{scenario}_Agent_{agent_name}.png', output_dir)
+
 def obs_list_to_state_vector(observation):
     state = np.array([])
     for obs in observation:
@@ -68,112 +108,153 @@ def visualize_agents(agents, env, n_episodes=20, speed=0.1):
         print(f'Episode {episode + 1} completed')
         plt.close()
 
-def solve_env(env, scenario, N_GAMES, evaluate, k=1, plot=True):
-    print("Solving env", scenario)
-    obs = env.reset()
+def solve_env_with_subpolicies(env, scenario, N_GAMES, evaluate, k_values=[1], plot=True, output_dir=None):
+    results = {}  # Store results for different subpolicies
 
-    n_agents = env.num_agents
-    actor_dims = [env.observation_spaces[agent_name].shape[0] for agent_name in env.agents]
-    n_actions = [env.action_spaces[agent_name].shape[0] for agent_name in env.agents]
-    critic_dims = sum(actor_dims) + sum(n_actions)
-    # what everyone is seeing
-    whole_state_observation_dims = sum(actor_dims)
+    for k in k_values:
+        print(f"Solving env {scenario} with k={k}")
+        obs = env.reset()
 
-    maddpg_agents = MADDPG(actor_dims, critic_dims, whole_state_observation_dims, n_agents, n_actions,
-                           fc1=32, fc2=32,
-                           alpha=0.01, beta=0.01, scenario=scenario,
-                           chkpt_dir='tmp/maddpg/', env=env, k=k)
+        n_agents = env.num_agents
+        actor_dims = [env.observation_spaces[agent_name].shape[0] for agent_name in env.agents]
+        n_actions = [env.action_spaces[agent_name].shape[0] for agent_name in env.agents]
+        critic_dims = sum(actor_dims) + sum(n_actions)
+        # what everyone is seeing
+        whole_state_observation_dims = sum(actor_dims)
 
-    LOAD_TYPE = ["Regular", "Best"]  # Regular: save every 10k, Best: save only if avg_score > best_score
-    PRINT_INTERVAL = 500
-    SAVE_INTERVAL = 10000
-    MAX_STEPS = 25
-    total_steps = 0
-    score_history = []
-    best_score = -3
-    agent_rewards = {agent_name: [] for agent_name in env.agents}
-    mean_agent_rewards = {agent_name: [] for agent_name in env.agents}
+        maddpg_agents = MADDPG(actor_dims, critic_dims, whole_state_observation_dims, n_agents, n_actions,
+                               fc1=32, fc2=32,
+                               alpha=0.01, beta=0.01, scenario=scenario,
+                               chkpt_dir=f'tmp/maddpg/k_{k}/', env=env, k=k)
 
-    if evaluate:
-        maddpg_agents.load_checkpoint(LOAD_TYPE[1])  # load best
-    else:
-        for i in tqdm(range(N_GAMES), desc="Training"):
-            obs, _ = env.reset()
-            score = 0
-            done = [False] * n_agents
-            episode_step = 0
-            # each episode, randomly choose a subpolicy
-            maddpg_agents.randomly_choose_subpolicy()
-            while not any(done):
-                actions = maddpg_agents.choose_action(obs)
+        LOAD_TYPE = ["Regular", "Best"]  # Regular: save every 10k, Best: save only if avg_score > best_score
+        PRINT_INTERVAL = 500
+        SAVE_INTERVAL = 10000
+        MAX_STEPS = 25
+        total_steps = 0
+        score_history = []
+        best_score = -3
+        agent_rewards = {agent_name: [] for agent_name in env.agents}
+        mean_agent_rewards = {agent_name: [] for agent_name in env.agents}
+        episode_lengths = []
+        policy_entropies = []  # List to store policy entropies
+        
+        if evaluate:
+            maddpg_agents.load_checkpoint(LOAD_TYPE[1])  # load best
+        else:
+            for i in tqdm(range(N_GAMES), desc=f"Training with k={k}"):
+                obs, _ = env.reset()
+                score = 0
+                done = [False] * n_agents
+                episode_step = 0
+                episode_length = 0
+                # each episode, randomly choose a subpolicy
+                maddpg_agents.randomly_choose_subpolicy()
+                while not any(done):
+                    actions = maddpg_agents.choose_action(obs)
 
-                obs_, reward, termination, truncation, _ = env.step(actions)
+                    obs_, reward, termination, truncation, _ = env.step(actions)
+                    state = np.concatenate([i for i in obs.values()])
+                    state_ = np.concatenate([i for i in obs_.values()])
 
-                state = np.concatenate([i for i in obs.values()])
-                state_ = np.concatenate([i for i in obs_.values()])
+                    if episode_step >= MAX_STEPS:
+                        done = [True] * n_agents
 
-                if episode_step >= MAX_STEPS:
-                    done = [True] * n_agents
+                    if any(termination.values()) or any(truncation.values()) or (episode_step >= MAX_STEPS):
+                        done = [True] * n_agents
 
-                if any(termination.values()) or any(truncation.values()) or (episode_step >= MAX_STEPS):
-                    done = [True] * n_agents
+                    maddpg_agents.store_transition(obs, state, actions, reward, obs_, state_, done)
 
-                maddpg_agents.store_transition(obs, state, actions, reward, obs_, state_, done)
+                    if total_steps % 5 == 0:
+                        maddpg_agents.learn()
 
-                if total_steps % 5 == 0:
-                    maddpg_agents.learn()
+                    obs = obs_
 
-                obs = obs_
+                    for agent_name, r in reward.items():
+                        agent_rewards[agent_name].append(r)
 
-                for agent_name, r in reward.items():
-                    agent_rewards[agent_name].append(r)
+                    score += sum(reward.values())
+                    total_steps += 1
+                    episode_step += 1
+                    episode_length += 1
+                
+                score_history.append(score)
+                avg_score = np.mean(score_history[-100:])
+                episode_lengths.append(episode_length)
 
-                score += sum(reward.values())
-                total_steps += 1
-                episode_step += 1
+                if (avg_score > best_score) and (i > PRINT_INTERVAL):
+                    print(" avg_score, best_score", avg_score, best_score)
+                    maddpg_agents.save_checkpoint(LOAD_TYPE[1])
 
-            score_history.append(score)
-            avg_score = np.mean(score_history[-100:])
-            if (avg_score > best_score) and (i > PRINT_INTERVAL):
-                print(" avg_score, best_score", avg_score, best_score)
-                maddpg_agents.save_checkpoint(LOAD_TYPE[1])
+                    best_score = avg_score
+                if i % SAVE_INTERVAL == 0 and i > 0:
+                    maddpg_agents.save_checkpoint(LOAD_TYPE[0])
 
-                best_score = avg_score
-            if i % SAVE_INTERVAL == 0 and i > 0:
-                maddpg_agents.save_checkpoint(LOAD_TYPE[0])
+                # Compute mean agent rewards
+                for agent_name, rewards in agent_rewards.items():
+                    mean_agent_reward = np.mean(rewards)
+                    mean_agent_rewards[agent_name].append(mean_agent_reward)
 
-            # Compute mean agent rewards
-            for agent_name, rewards in agent_rewards.items():
-                mean_agent_reward = np.mean(rewards)
-                mean_agent_rewards[agent_name].append(mean_agent_reward)
+        # Store results for this subpolicy
+        results[f'k_{k}'] = {
+            'score_history': score_history,
+            'agent_rewards': agent_rewards,
+            'mean_agent_rewards': mean_agent_rewards,
+            'episode_lengths': episode_lengths
+        }
 
-    if plot:
-        # Plot for all agents
-        plt.figure(figsize=(12, 6))
-        plt.xlabel('Episode')
-        plt.ylabel('Mean Agent Reward')
-        plt.title(f'Mean Agent Reward Progress - {scenario}')
-        for agent_name, mean_rewards in mean_agent_rewards.items():
-            plt.plot(range(1, len(mean_rewards) + 1), mean_rewards, label=f'Agent {agent_name}')
-        plt.legend()
-        plt.grid()
-        plt.savefig(f'Mean_Agent_Reward_Progress_{scenario}.png')
-        plt.show()
+        if plot:
+            # Plot results for different subpolicies
+            output_subdir = os.path.join(output_dir, f'scenario_{scenario}', f'k_{k}')
+            os.makedirs(output_subdir, exist_ok=True)
 
-        # Plot for 'agent_0' only
-        agent_name = 'agent_0'
-        if agent_name in mean_agent_rewards:
-            plot_mean_agent_rewards(mean_agent_rewards[agent_name], agent_name, scenario)
+            # Plot for average episode rewards
+            plot_average_episode_rewards(score_history, f"{scenario} - {k}", output_subdir)
 
+            # Plot for individual agent rewards
+            plot_individual_agent_rewards(agent_rewards, f"{scenario} - {k}", output_subdir)
 
-env1, scenario1 = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
-env2, scenario2 = simple_reference_v3.parallel_env(max_cycles=25, continuous_actions=True), "Physical_Deception"
-env3, scenario3 = simple_speaker_listener_v4.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "Cooperative_Communication"
-env4, scenario4 = simple_crypto_v3.parallel_env(max_cycles=25, continuous_actions=True), "Covert_Communication"
-env5, scenario5 = simple_spread_v3.parallel_env(max_cycles=25, continuous_actions=True), "Cooperative_Navigation"
-env6, scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True, render_mode='rgb_array'), "Keep_Away"
+            # Plot for episode lengths
+            plot_episode_lengths(episode_lengths, f"{scenario} - {k}", output_subdir)
 
-envs = [env1, env2, env3, env4, env5, env6]
-scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
+            # Plot for all agents
+            plt.figure(figsize=(12, 6))
+            plt.xlabel('Episode')
+            plt.ylabel('Mean Agent Reward')
+            plt.title(f'Mean Agent Reward Progress - {scenario} - {k}')
+            for agent_name, mean_rewards in mean_agent_rewards.items():
+                plt.plot(range(1, len(mean_rewards) + 1), mean_rewards, label=f'Agent {agent_name}')
+            plt.legend()
+            plt.grid()
+            save_plot(plt, f'Mean_Agent_Reward_Progress_{scenario}_k_{k}.png', output_subdir)
 
-solve_env(env1, scenario1, N_GAMES=25_000, evaluate=False, k=3, plot=True)
+            # Plot for 'agent_0' only
+            agent_name = 'agent_0'
+            if agent_name in mean_agent_rewards:
+                plot_mean_agent_rewards(mean_agent_rewards[agent_name], agent_name, f"{scenario} - {k}", output_subdir)
+
+if __name__ == '__main__':
+    warnings.filterwarnings('ignore')
+
+    # Specify the output directory
+    output_dir = "plots"
+
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    env1, scenario1 = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+    env2, scenario2 = simple_reference_v3.parallel_env(max_cycles=25, continuous_actions=True), "Physical_Deception"
+    env3, scenario3 = simple_speaker_listener_v4.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "Cooperative_Communication"
+    env4, scenario4 = simple_crypto_v3.parallel_env(max_cycles=25, continuous_actions=True), "Covert_Communication"
+    env5, scenario5 = simple_spread_v3.parallel_env(max_cycles=25, continuous_actions=True), "Cooperative_Navigation"
+    env6, scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True, render_mode='rgb_array'), "Keep_Away"
+
+    envs = [env1, env2, env3, env4, env5, env6] # remove env if not needed
+    scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
+
+    # Specify different values of k to compare
+    k_values = [1, 2]  # Add more values if needed
+
+    for env, scenario in zip(envs, scenarios):
+        solve_env_with_subpolicies(env, scenario, N_GAMES=50, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)

@@ -1,7 +1,8 @@
 import os
 import numpy as np
-from agent import Agent
-from pettingzoo.mpe import simple_speaker_listener_v4
+from tqdm import tqdm
+from DDPG.agent import Agent
+from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3
 
 
 def obs_list_to_state_vector(observation):
@@ -11,9 +12,7 @@ def obs_list_to_state_vector(observation):
     return state
 
 
-def run():
-    parallel_env = simple_speaker_listener_v4.parallel_env(
-            continuous_actions=True)
+def train_DDPG(parallel_env, N_GAMES):
     _, _ = parallel_env.reset()
     n_agents = parallel_env.max_num_agents
 
@@ -28,8 +27,7 @@ def run():
                             gamma=0.95, tau=0.01, alpha=1e-4, beta=1e-3))
 
     EVAL_INTERVAL = 1000
-    MAX_EPISODES = 1000
-    MAX_STEPS = MAX_EPISODES * 25 # 25 steps per episode
+    MAX_STEPS = N_GAMES * 25  # 25 steps per episode
     total_steps = 0
     episode = 0
 
@@ -38,6 +36,8 @@ def run():
     score = evaluate(agents, parallel_env, episode, total_steps)
     eval_scores.append(score)
     eval_steps.append(total_steps)
+
+    pbar = tqdm(total=MAX_STEPS, desc="Training DDPG")
 
     while total_steps < MAX_STEPS:
         obs, _ = parallel_env.reset()
@@ -66,6 +66,7 @@ def run():
                     agent.learn()
             obs = obs_
             total_steps += 1
+            pbar.update(1)
 
         if total_steps % EVAL_INTERVAL == 0 and total_steps > 0:
             score = evaluate(agents, parallel_env, episode, total_steps)
@@ -81,6 +82,10 @@ def run():
         # Save the files in the 'data' directory
         np.save('data/ddpg_scores.npy', np.array(eval_scores))
         np.save('data/ddpg_steps.npy', np.array(eval_steps))
+
+    pbar.close()
+    return eval_scores
+
 
 def evaluate(agents, env, ep, step):
     score_history = []
@@ -107,10 +112,11 @@ def evaluate(agents, env, ep, step):
             score += sum(list_reward)
         score_history.append(score)
     avg_score = np.mean(score_history)
-    print(f'Evaluation episode {ep} train steps {step}'
-          f' average score {avg_score:.1f}')
+    
     return avg_score
 
 
 if __name__ == '__main__':
-    run()
+    # parallel_env,scenario = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+    # train_DDPG(parallel_env=parallel_env,N_GAMES=1000)
+    pass
