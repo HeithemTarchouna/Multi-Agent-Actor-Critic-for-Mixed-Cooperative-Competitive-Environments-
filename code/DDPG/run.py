@@ -1,18 +1,17 @@
 import os
 import numpy as np
 from tqdm import tqdm
-from DDPG.agent import Agent
+from agent import Agent
 from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3
+import matplotlib.pyplot as plt
 
+# Define a function to save plots
+def save_plot(plt, filename, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    plt.savefig(os.path.join(output_dir, filename))
 
-def obs_list_to_state_vector(observation):
-    state = np.array([])
-    for obs in observation:
-        state = np.concatenate([state, obs])
-    return state
-
-
-def train_DDPG(parallel_env, N_GAMES):
+def train_DDPG_and_plot(parallel_env, N_GAMES):
     _, _ = parallel_env.reset()
     n_agents = parallel_env.max_num_agents
 
@@ -86,7 +85,6 @@ def train_DDPG(parallel_env, N_GAMES):
     pbar.close()
     return eval_scores
 
-
 def evaluate(agents, env, ep, step):
     score_history = []
     for i in range(3):
@@ -112,11 +110,32 @@ def evaluate(agents, env, ep, step):
             score += sum(list_reward)
         score_history.append(score)
     avg_score = np.mean(score_history)
-    
+
     return avg_score
 
+def plot_ddpg_scores(eval_scores, output_dir):
+    plt.figure(figsize=(12, 6))
+    plt.plot(eval_scores)
+    plt.xlabel('Episode')
+    plt.ylabel('Average Score')
+    plt.title('DDPG Average Score Progress')
+    plt.grid()
+    save_plot(plt, 'ddpg_scores.png', output_dir)
 
 if __name__ == '__main__':
-    # parallel_env,scenario = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
-    # train_DDPG(parallel_env=parallel_env,N_GAMES=1000)
-    pass
+    # Specify the output directory
+    output_dir = "ddpg_plots"
+
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # Specify the parallel environment and the number of games
+    parallel_env, _ = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+    N_GAMES = 1000
+
+    # Train DDPG and plot results
+    eval_scores = train_DDPG_and_plot(parallel_env, N_GAMES)
+
+    # Plot DDPG scores
+    plot_ddpg_scores(eval_scores, output_dir)

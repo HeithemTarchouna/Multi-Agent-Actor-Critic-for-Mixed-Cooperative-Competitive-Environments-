@@ -1,8 +1,8 @@
 import numpy as np
 import torch as T
 import torch.nn.functional as F
-from DDPG.networks import ActorNetwork, CriticNetwork
-from DDPG.buffer import ReplayBuffer
+from networks import ActorNetwork, CriticNetwork
+from buffer import ReplayBuffer
 
 
 class Agent:
