@@ -1,12 +1,13 @@
 import os
 import numpy as np
 from maddpg import MADDPG
-from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3
+from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3,simple_push_v3
 import warnings
 import time
 import matplotlib.pyplot as plt
 from IPython import display
 from tqdm import tqdm
+from pettingzoo.sisl import waterworld_v4
 
     
 # Create a function to save plots
@@ -129,18 +130,19 @@ def solve_env_with_subpolicies(env, scenario, N_GAMES, evaluate, k_values=[1], p
 
         LOAD_TYPE = ["Regular", "Best"]  # Regular: save every 10k, Best: save only if avg_score > best_score
         PRINT_INTERVAL = 500
-        SAVE_INTERVAL = 10000
+        SAVE_INTERVAL = 5000
         MAX_STEPS = 25
         total_steps = 0
         score_history = []
-        best_score = -3
+        best_score = -35
         agent_rewards = {agent_name: [] for agent_name in env.agents}
         mean_agent_rewards = {agent_name: [] for agent_name in env.agents}
         episode_lengths = []
         policy_entropies = []  # List to store policy entropies
         
         if evaluate:
-            maddpg_agents.load_checkpoint(LOAD_TYPE[1])  # load best
+            maddpg_agents.load_checkpoint(LOAD_TYPE[0])  # load best
+            visualize_agents(maddpg_agents, env, n_episodes=5, speed=10)
         else:
             for i in tqdm(range(N_GAMES), desc=f"Training with k={k}"):
                 obs, _ = env.reset()
@@ -249,15 +251,18 @@ if __name__ == '__main__':
     env4, scenario4 = simple_crypto_v3.parallel_env(max_cycles=25, continuous_actions=True), "Covert_Communication"
     env5, scenario5 = simple_spread_v3.parallel_env(max_cycles=25, continuous_actions=True), "Cooperative_Navigation"
     env6, scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True, render_mode='rgb_array'), "Keep_Away"
+    env7, scenario7 = simple_push_v3.parallel_env(max_cycles=25, continuous_actions=True,render_mode="rgb_array"), "Push"
+    #envs = [env1, env2, env3, env4, env5, env6] # remove env if not needed
+    #scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
+    env10,scenario10 = waterworld_v4.parallel_env(max_cycles=25, render_mode="rgb_array"), "Waterworld"
 
-    envs = [env1, env2, env3, env4, env5, env6] # remove env if not needed
-    scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
-
+    envs = [env3]
+    scenarios = [scenario3]
     # K = 4  Cooperative_Communication
     # K = 3  keep-away and cooperative navigation environments,
     # K = 2 for predator-prey
     # 
-    k_values = [1, 3]  # Add more values if needed
+    k_values = [1,4]  # Add more values if needed
 
     for env, scenario in zip(envs, scenarios):
         solve_env_with_subpolicies(env, scenario, N_GAMES=25_000, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)
