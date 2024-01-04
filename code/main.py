@@ -96,7 +96,7 @@ def solve_env_with_subpolicies(env, scenario, N_GAMES, evaluate, k_values=[1], p
         total_steps = 0
         score_history = []
         score_history_100 = []
-        best_score = -3
+        best_score = - np.inf  #the first score will always be better than this
         epsiode_mean_agent_rewards = {agent_name: [] for agent_name in env.agents}
         episode_lengths = []
         
