@@ -250,14 +250,16 @@ if __name__ == '__main__':
     env5, scenario5 = simple_spread_v3.parallel_env(max_cycles=25, continuous_actions=True), "Cooperative_Navigation"
     env6, scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True, render_mode='rgb_array'), "Keep_Away"
 
-    envs = [env1, env2, env3, env4, env5, env6] # remove env if not needed
-    scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
+   # envs = [env1, env2, env3, env4, env5, env6] # remove env if not needed
+    envs = [env6]
+  #  scenarios = [scenario1, scenario2, scenario3, scenario4, scenario5, scenario6]
+    scenarios = [scenario6]
 
     # K = 4  Cooperative_Communication
     # K = 3  keep-away and cooperative navigation environments,
     # K = 2 for predator-prey
-    # 
-    k_values = [1, 3]  # Add more values if needed
+    #
+    k_values = [4]  # Add more values if needed
 
     for env, scenario in zip(envs, scenarios):
         solve_env_with_subpolicies(env, scenario, N_GAMES=25_000, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)

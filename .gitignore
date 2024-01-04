@@ -4,7 +4,6 @@ __pycache__/
 *.pyc
 *.pyc
 code/__pycache__/buffer.cpython-310.pyc
-plots/
 tmp/
 ddpg_plots/
 *.npy
