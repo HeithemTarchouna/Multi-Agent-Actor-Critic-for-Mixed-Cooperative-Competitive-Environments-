@@ -2,22 +2,24 @@ import os
 import numpy as np
 from tqdm import tqdm
 from agent import Agent
-from pettingzoo.mpe import simple_adversary_v3, simple_speaker_listener_v4, simple_spread_v3, simple_reference_v3, simple_tag_v3, simple_crypto_v3
-import matplotlib.pyplot as plt
+from pettingzoo.mpe import simple_tag_v3
+from utils import plot_all_agents_rewards, plot_average_episode_rewards
 
-# Define a function to save plots
-def save_plot(plt, filename, output_dir):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    plt.savefig(os.path.join(output_dir, filename))
+def obs_list_to_state_vector(observation):
+    state = np.array([])
+    for obs in observation:
+        state = np.concatenate([state, obs])
+    return state
 
-def train_DDPG_and_plot(parallel_env, N_GAMES):
+def smooth_data(data, window_size):
+    """Apply a moving average to smooth the data."""
+    return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+
+def train_DDPG(parallel_env, N_GAMES, scenario, output_dir):
     _, _ = parallel_env.reset()
     n_agents = parallel_env.max_num_agents
 
-    n_actions = []
     agents = []
-
     for agent in parallel_env.agents:
         input_dims = parallel_env.observation_space(agent).shape[0]
         n_actions = parallel_env.action_space(agent).shape[0]
@@ -29,7 +31,9 @@ def train_DDPG_and_plot(parallel_env, N_GAMES):
     MAX_STEPS = N_GAMES * 25  # 25 steps per episode
     total_steps = 0
     episode = 0
-
+    
+    episode_rewards = []  # Store rewards for each episode
+    epsiode_mean_agent_rewards = {agent_name: [] for agent_name in parallel_env.agents}
     eval_scores = []
     eval_steps = []
     score = evaluate(agents, parallel_env, episode, total_steps)
@@ -42,6 +46,8 @@ def train_DDPG_and_plot(parallel_env, N_GAMES):
         obs, _ = parallel_env.reset()
         terminal = [False] * n_agents
         obs = list(obs.values())
+        episode_reward = 0
+        agent_rewards = {agent_name: [] for agent_name in parallel_env.agents}
         while not any(terminal):
             action = [agent.choose_action(obs[idx])
                       for idx, agent in enumerate(agents)]
@@ -64,6 +70,11 @@ def train_DDPG_and_plot(parallel_env, N_GAMES):
                 for agent in agents:
                     agent.learn()
             obs = obs_
+            
+            # Store the rewards
+            for agent_name, r in reward.items():
+                agent_rewards[agent_name].append(r)
+            episode_reward += sum(reward.values())
             total_steps += 1
             pbar.update(1)
 
@@ -81,9 +92,19 @@ def train_DDPG_and_plot(parallel_env, N_GAMES):
         # Save the files in the 'data' directory
         np.save('data/ddpg_scores.npy', np.array(eval_scores))
         np.save('data/ddpg_steps.npy', np.array(eval_steps))
+        episode_rewards.append(episode_reward)  # Store reward for this episode
+        for agent_name, rewards in agent_rewards.items():
+            mean_agent_reward = sum(rewards)
+            epsiode_mean_agent_rewards[agent_name].append(mean_agent_reward)
 
     pbar.close()
+    smoothed_rewards = smooth_data(episode_rewards, window_size=100)  # Adjust the window size as needed
+
+    plot_average_episode_rewards(smoothed_rewards, scenario, output_dir)
+    plot_all_agents_rewards(epsiode_mean_agent_rewards, scenario, output_dir)
+    
     return eval_scores
+
 
 def evaluate(agents, env, ep, step):
     score_history = []
@@ -110,17 +131,9 @@ def evaluate(agents, env, ep, step):
             score += sum(list_reward)
         score_history.append(score)
     avg_score = np.mean(score_history)
-
+    
     return avg_score
 
-def plot_ddpg_scores(eval_scores, output_dir):
-    plt.figure(figsize=(12, 6))
-    plt.plot(eval_scores)
-    plt.xlabel('Episode')
-    plt.ylabel('Average Score')
-    plt.title('DDPG Average Score Progress')
-    plt.grid()
-    save_plot(plt, 'ddpg_scores.png', output_dir)
 
 if __name__ == '__main__':
     # Specify the output directory
@@ -130,12 +143,15 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Specify the parallel environment and the number of games
-    parallel_env, _ = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
-    N_GAMES = 1000
+    # Change this line to change the environment
+    parallel_env, scenario = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+    
+    N_GAMES = 25_000
 
-    # Train DDPG and plot results
-    eval_scores = train_DDPG_and_plot(parallel_env, N_GAMES)
+    # Create a subfolder with the name of the scenario
+    scenario_dir = os.path.join(output_dir, scenario)
 
-    # Plot DDPG scores
-    plot_ddpg_scores(eval_scores, output_dir)
+    if not os.path.exists(scenario_dir):
+        os.makedirs(scenario_dir)
+
+    train_DDPG(parallel_env=parallel_env, N_GAMES=N_GAMES, scenario=scenario, output_dir=scenario_dir)
