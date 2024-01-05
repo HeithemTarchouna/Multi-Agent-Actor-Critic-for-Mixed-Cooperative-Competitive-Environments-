@@ -2,8 +2,9 @@ import os
 import numpy as np
 from tqdm import tqdm
 from agent import Agent
-from pettingzoo.mpe import simple_tag_v3
+from pettingzoo.mpe import simple_tag_v3, simple_adversary_v3
 from utils import plot_all_agents_rewards, plot_average_episode_rewards
+
 
 def obs_list_to_state_vector(observation):
     state = np.array([])
@@ -11,9 +12,11 @@ def obs_list_to_state_vector(observation):
         state = np.concatenate([state, obs])
     return state
 
+
 def smooth_data(data, window_size):
     """Apply a moving average to smooth the data."""
-    return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+    return np.convolve(data, np.ones(window_size) / window_size, mode='valid')
+
 
 def train_DDPG(parallel_env, N_GAMES, scenario, output_dir):
     _, _ = parallel_env.reset()
@@ -31,7 +34,7 @@ def train_DDPG(parallel_env, N_GAMES, scenario, output_dir):
     MAX_STEPS = N_GAMES * 25  # 25 steps per episode
     total_steps = 0
     episode = 0
-    
+
     episode_rewards = []  # Store rewards for each episode
     epsiode_mean_agent_rewards = {agent_name: [] for agent_name in parallel_env.agents}
     eval_scores = []
@@ -70,7 +73,7 @@ def train_DDPG(parallel_env, N_GAMES, scenario, output_dir):
                 for agent in agents:
                     agent.learn()
             obs = obs_
-            
+
             # Store the rewards
             for agent_name, r in reward.items():
                 agent_rewards[agent_name].append(r)
@@ -102,7 +105,7 @@ def train_DDPG(parallel_env, N_GAMES, scenario, output_dir):
 
     plot_average_episode_rewards(smoothed_rewards, scenario, output_dir)
     plot_all_agents_rewards(epsiode_mean_agent_rewards, scenario, output_dir)
-    
+
     return eval_scores
 
 
@@ -131,7 +134,7 @@ def evaluate(agents, env, ep, step):
             score += sum(list_reward)
         score_history.append(score)
     avg_score = np.mean(score_history)
-    
+
     return avg_score
 
 
@@ -144,8 +147,10 @@ if __name__ == '__main__':
         os.makedirs(output_dir)
 
     # Change this line to change the environment
-    parallel_env, scenario = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
-    
+    #  parallel_env, scenario = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+    parallel_env, scenario = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True,
+                                                              render_mode='rgb_array'), "Keep_Away"
+
     N_GAMES = 25_000
 
     # Create a subfolder with the name of the scenario
