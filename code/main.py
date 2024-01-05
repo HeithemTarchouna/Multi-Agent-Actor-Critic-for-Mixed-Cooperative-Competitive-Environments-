@@ -180,10 +180,10 @@ if __name__ == '__main__':
     env6, scenario6 = simple_adversary_v3.parallel_env(N=2, max_cycles=25, continuous_actions=True, render_mode='rgb_array'), "Keep_Away"
     env7, scenario7 = simple_push_v3.parallel_env(max_cycles=25, continuous_actions=True,render_mode="rgb_array"), "Push"
 
-    envs = [env3]
-    scenarios = [scenario3]
+    envs = [env1]
+    scenarios = [scenario1]
 
-    k_values = [1]  # Add more values if needed
+    k_values = [1,2]  # Add more values if needed
 
     for env, scenario in zip(envs, scenarios):
-        solve_env_with_subpolicies(env, scenario, N_GAMES=1000, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)
+        solve_env_with_subpolicies(env, scenario, N_GAMES=25_000, evaluate=False, k_values=k_values, plot=True, output_dir=output_dir)
