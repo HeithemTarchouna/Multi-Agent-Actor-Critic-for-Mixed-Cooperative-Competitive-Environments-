@@ -131,8 +131,8 @@ if __name__ == '__main__':
         os.makedirs(output_dir)
 
     # Specify the parallel environment and the number of games
-    parallel_env, _ = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
-    N_GAMES = 1000
+    parallel_env, _ = simple_speaker_listener_v4.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
+    N_GAMES = 25_000
 
     # Train DDPG and plot results
     eval_scores = train_DDPG_and_plot(parallel_env, N_GAMES)
