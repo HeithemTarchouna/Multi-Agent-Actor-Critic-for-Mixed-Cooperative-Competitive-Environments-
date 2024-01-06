@@ -2,7 +2,8 @@ import os
 import numpy as np
 from tqdm import tqdm
 from agent import Agent
-from pettingzoo.mpe import simple_tag_v3, simple_adversary_v3, simple_spread_v3, simple_crypto_v3
+from pettingzoo.mpe import simple_tag_v3, simple_adversary_v3, simple_spread_v3, simple_crypto_v3, \
+    simple_speaker_listener_v4
 from utils import plot_all_agents_rewards, plot_average_episode_rewards
 
 
@@ -148,7 +149,7 @@ if __name__ == '__main__':
 
     # Change this line to change the environment
     #  parallel_env, scenario = simple_tag_v3.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "predator_prey"
-    parallel_env, scenario = simple_crypto_v3.parallel_env(max_cycles=25, continuous_actions=True), "Covert_Communication"
+    parallel_env, scenario =  simple_speaker_listener_v4.parallel_env(max_cycles=25, continuous_actions=True, render_mode="rgb_array"), "Cooperative_Communication"
 
     N_GAMES = 25_000
 
