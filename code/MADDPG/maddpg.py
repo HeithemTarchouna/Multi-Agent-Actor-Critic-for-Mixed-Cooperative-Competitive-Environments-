@@ -4,7 +4,7 @@ from agent import Agent
 from buffer import MultiAgentReplayBuffer
 import numpy as np
  
- 
+
 class MADDPG:
     def __init__(self, actor_dims, critic_dims,whole_state_observation_dims, n_agents, n_actions, env,
                  scenario='simple',  alpha=0.01, beta=0.01, fc1=32,

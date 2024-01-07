@@ -1,5 +1,5 @@
 import numpy as np
-
+# this class is used to store the experiences for each agent's subpolicy
 class MultiAgentReplayBuffer:
     def __init__(self, max_size, critic_dims, actor_dims, 
             n_actions, n_agents, batch_size,agent_names):
@@ -31,20 +31,10 @@ class MultiAgentReplayBuffer:
             self.actor_action_memory.append(
                             np.zeros((self.mem_size, self.n_actions[i])))
 
-
+    # Store a new experience in the memory buffer
     def store_transition(self, raw_obs, state, action, reward, 
                                raw_obs_, state_, done):
-        # this introduces a bug: if we fill up the memory capacity and then
-        # zero out our actor memory, the critic will still have memories to access
-        # while the actor will have nothing but zeros to sample. Obviously
-        # not what we intend.
-        # In reality, there's no problem with just using the same index
-        # for both the actor and critic states. I'm not sure why I thought
-        # this was necessary in the first place. Sorry for the confusion!
-
-        #if self.mem_cntr % self.mem_size == 0 and self.mem_cntr > 0:
-        #    self.init_actor_memory()
-        
+        # circular buffer (when buffer is full, replace the old with new)       
         index = self.mem_cntr % self.mem_size
 
         for agent_idx, agent_name in enumerate(self.agent_names):
@@ -58,10 +48,12 @@ class MultiAgentReplayBuffer:
         self.terminal_memory[index] = done
         self.mem_cntr += 1
 
+
+    # Sample a batch of experiences from the memory buffer
     def sample_buffer(self):
         max_mem = min(self.mem_cntr, self.mem_size)
         
-
+        # Randomly sample indices
         batch = np.random.choice(max_mem, self.batch_size, replace=False)
         states = self.state_memory[batch]
         rewards = self.reward_memory[batch]
@@ -71,6 +63,7 @@ class MultiAgentReplayBuffer:
         actor_states = []
         actor_new_states = []
         actions = []
+        # 
         for agent_idx in range(self.n_agents):
             actor_states.append(self.actor_state_memory[agent_idx][batch])
             actor_new_states.append(self.actor_new_state_memory[agent_idx][batch])
@@ -79,6 +72,7 @@ class MultiAgentReplayBuffer:
         return actor_states, states, actions, rewards, \
                actor_new_states, states_, terminal
 
+    # Check if the buffer has enough samples to start training
     def ready(self):
         if self.mem_cntr >= self.batch_size:
             return True

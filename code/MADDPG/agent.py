@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 
 
-
+# Each agent has k instances of the subpolicy class
 class SubPolicy:
     def __init__(self, actor_dims, critic_dims, n_actions, n_agents,  chkpt_dir,agent_name,
                     alpha=0.01, beta=0.01, fc1=32,

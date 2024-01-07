@@ -4,7 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-# T.autograd.set_detect_anomaly(True)
+
+# Critic Network:
+# used to approximate the Q-value function given the state of the environment 
+# and the actions of all agents for each agent
 class CriticNetwork(nn.Module):
     def __init__(self, beta, input_dims, fc1_dims, fc2_dims, 
                     n_agents, n_actions, name, chkpt_dir):
@@ -41,7 +44,8 @@ class CriticNetwork(nn.Module):
     #     return 
     #     self.load_state_dict(T.load(checkpoint_path))
 
-
+# Actor Network:
+# used to approximate the policy function for each agent
 class ActorNetwork(nn.Module):
     def __init__(self, alpha, input_dims, fc1_dims, fc2_dims, 
                  n_actions, name, chkpt_dir):
