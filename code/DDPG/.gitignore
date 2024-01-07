@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+maddpg_pytorch_env/
 
 # C extensions
 *.so
